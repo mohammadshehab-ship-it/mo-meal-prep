@@ -1,4 +1,4 @@
-const CACHE_NAME = 'canton-meal-prep-v3';
+const CACHE_NAME = 'canton-meal-prep-v4';
 const ASSETS = ['./', './index.html', './data.js', './app.js', './manifest.json'];
 
 self.addEventListener('install', (e) => {

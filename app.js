@@ -181,6 +181,24 @@ let activeOpenDrawerContext = null;
 
 document.addEventListener('DOMContentLoaded', async () => {
   registerServiceWorker();
+
+  const urlParams = new URLSearchParams(window.location.search);
+  const isFamilyInvite =
+    urlParams.get('invite') === '1' ||
+    urlParams.get('signup') === '1' ||
+    urlParams.get('create') === '1' ||
+    window.location.hash === '#invite' ||
+    window.location.hash === '#signup';
+
+  if (isFamilyInvite) {
+    // Shared invite link ALWAYS opens cleanly on Create Username + Intro Video,
+    // never auto-logging into an existing session (including Mo's).
+    currentSession = null;
+    localStorage.removeItem(ACTIVE_USER_SESSION_KEY);
+    startFamilyOnboarding();
+    return;
+  }
+
   const savedSess = localStorage.getItem(ACTIVE_USER_SESSION_KEY);
   if (savedSess) {
     try {
@@ -188,17 +206,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     } catch (e) {}
   }
 
-  const urlParams = new URLSearchParams(window.location.search);
-  const isFamilyInvite = urlParams.get('invite') === '1';
-
   if (!currentSession || !currentSession.username) {
-    if (isFamilyInvite) {
-      // Family invite link lands directly on the HD Intro Video & Guided Onboarding
-      startFamilyOnboarding();
-    } else {
-      // Show Sign-In / Family Onboarding Screen
-      openAuthOverlay('signin');
-    }
+    // Show Sign-In / Create Username Screen
+    openAuthOverlay('signin');
     return;
   }
 
@@ -206,6 +216,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 });
 
 async function initializeAuthenticatedApp() {
+  if (window.history && window.history.replaceState && window.location.search) {
+    window.history.replaceState({}, document.title, window.location.pathname);
+  }
   const overlay = document.getElementById('authOverlay');
   if (overlay) overlay.classList.add('hidden');
   loadState();
@@ -2564,7 +2577,7 @@ function preloadIntroVideoForShare() {
 }
 
 function getFamilyShareMessage() {
-  return `Hey family! Check out our personal Meal Prep & Macro Studio app!\n\nTap below to watch the 1-minute animated intro video and build your own private custom meal plan:\n${PUBLIC_INVITE_URL}\n\nDirect HD Intro Video:\n${PUBLIC_VIDEO_URL}`;
+  return `Hey family! Check out Meal Prep & Macro Studio!\n\nTap below to create your own username, watch the 1-min intro video & build your custom meal plan:\n${PUBLIC_INVITE_URL}\n\nWatch Intro Video Directly:\n${PUBLIC_VIDEO_URL}`;
 }
 
 function shareAppAndVideoToFamily() {
@@ -2793,8 +2806,8 @@ function openAuthOverlay(mode = 'signin') {
 
         <div class="space-y-3.5">
           <div>
-            <label class="block text-xs font-bold text-slate-500 dark:text-slate-300 mb-1">Your First Name / Username</label>
-            <input id="loginUsername" type="text" placeholder="e.g., Mo" class="w-full soft-input rounded-2xl px-4 py-3 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+            <label class="block text-xs font-bold text-slate-500 dark:text-slate-300 mb-1">Your Username / First Name</label>
+            <input id="loginUsername" type="text" placeholder="Enter your username" class="w-full soft-input rounded-2xl px-4 py-3 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500" />
           </div>
           <div>
             <label class="block text-xs font-bold text-slate-500 dark:text-slate-300 mb-1">4-Digit Security PIN</label>
@@ -2808,9 +2821,9 @@ function openAuthOverlay(mode = 'signin') {
         </div>
 
         <div class="pt-4 border-t border-slate-100 dark:border-slate-800 text-center space-y-2.5">
-          <p class="text-xs text-slate-400">New family member? Watch the 1-min video & create your own isolated profile:</p>
+          <p class="text-xs text-slate-400">New here? Create your own username, watch the 1-min video & build your custom plan:</p>
           <button onclick="startFamilyOnboarding()" class="w-full py-3 rounded-2xl bg-emerald-50 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-500/30 font-extrabold text-xs hover:bg-emerald-100 transition">
-            ✨ New Here? Watch Intro Video & Start Guided Onboarding
+            ✨ Create a Username & Watch Intro Video
           </button>
           <button onclick="shareAppAndVideoToFamily()" class="w-full py-2.5 rounded-2xl bg-slate-100 dark:bg-slate-800/80 text-slate-600 dark:text-slate-300 font-bold text-xs hover:bg-slate-200 transition">
             📤 Share Intro Video & App Link to Family
@@ -2932,66 +2945,50 @@ function renderOnboardingStep(keepPlaying = false) {
 
   const s = onboardingDraft.step;
 
-  // STEP 1: REAL ANIMATED HD MP4 VIDEO PLAYER
-  if (s === 1) {
+  // STEP 1 (Unified): CREATE USERNAME & 4-DIGIT PIN + WATCH 1-MIN INTRO VIDEO
+  if (s === 1 || s === 2) {
     container.innerHTML = `
-      <div class="soft-card rounded-3xl p-5 sm:p-6 space-y-4">
+      <div class="soft-card rounded-3xl p-5 sm:p-6 space-y-5">
         <div class="flex items-center justify-between">
           <span class="text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full bg-emerald-50 dark:bg-emerald-500/15 text-emerald-600 dark:text-emerald-400">
-            🎬 Watch: How Meal Prep Studio Works
+            Step 1 of 3 • Create Your Username
           </span>
-          <button onclick="stopInfographicVideo(); openAuthOverlay('signin');" class="text-xs text-slate-400 hover:text-slate-600 font-semibold">
-            Sign In ✕
+          <button onclick="stopInfographicVideo(); openAuthOverlay('signin');" class="text-xs text-slate-400 hover:text-emerald-500 font-semibold">
+            Already have a username? Sign In →
           </button>
         </div>
 
-        ${buildInfographicVideoPlayerHTML()}
-
-        <!-- Continue to Onboarding Button -->
-        <button onclick="stopInfographicVideo(); onboardingDraft.step=2; renderOnboardingStep();" class="w-full py-3.5 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-extrabold shadow-lg transition">
-          🚀 Build My Custom Profile (Step 1 of 3) ▶
-        </button>
-      </div>
-    `;
-    return;
-  }
-
-  // STEP 2: ACCOUNT NAME & 4-DIGIT PIN
-  if (s === 2) {
-    container.innerHTML = `
-      <div class="soft-card rounded-3xl p-6 sm:p-7 space-y-5">
-        <div class="flex items-center justify-between">
-          <span class="text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full bg-emerald-50 dark:bg-emerald-500/15 text-emerald-600 dark:text-emerald-400">
-            Step 1 of 3 • Create Your Account
-          </span>
-          <button onclick="onboardingDraft.step=1; renderOnboardingStep();" class="text-xs text-slate-400 font-semibold">◀ Back to Tour</button>
-        </div>
-
         <div>
-          <h2 class="text-lg font-extrabold">Let's Create Your Personal Space</h2>
+          <h2 class="text-xl font-extrabold tracking-tight">Create Your Personal Account</h2>
           <p class="text-xs text-slate-400 mt-1">
-            Your profile, weight history, and weekly meal plan will be saved in your own private cloud folder so you never overwrite anyone else's plan.
+            Choose your own username and 4-digit PIN. Your calorie targets, meal plan, and grocery list are stored privately under your username.
           </p>
         </div>
 
-        <div class="space-y-3.5 text-xs">
+        <div class="space-y-3 text-xs">
           <div>
-            <label class="block font-bold text-slate-600 dark:text-slate-300 mb-1">1. Your First Name (Used for signing in)</label>
-            <input id="obName" type="text" value="${onboardingDraft.displayName}" placeholder="e.g., Ahmad, Sara, Nora..." class="w-full soft-input rounded-2xl px-4 py-3 text-sm font-bold" />
+            <label class="block font-bold text-slate-600 dark:text-slate-300 mb-1">1. Create a Username (Your First Name)</label>
+            <input id="obName" type="text" value="${onboardingDraft.displayName}" placeholder="e.g., Sarah, Ahmad, Nora..." class="w-full soft-input rounded-2xl px-4 py-3 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500" />
           </div>
 
           <div>
             <label class="block font-bold text-slate-600 dark:text-slate-300 mb-1">2. Choose a 4-Digit Security PIN</label>
-            <input id="obPin" type="password" inputmode="numeric" maxlength="6" value="${onboardingDraft.pin}" placeholder="e.g., 1234" class="w-full soft-input rounded-2xl px-4 py-3 text-sm font-extrabold tracking-widest" />
-            <p class="text-[11px] text-slate-400 mt-1">You'll use your First Name + this PIN whenever you open the app on a new device.</p>
+            <input id="obPin" type="password" inputmode="numeric" maxlength="6" value="${onboardingDraft.pin}" placeholder="e.g., 1234" onkeydown="if(event.key==='Enter') submitOnboardingStep2()" class="w-full soft-input rounded-2xl px-4 py-3 text-sm font-extrabold tracking-widest focus:outline-none focus:ring-2 focus:ring-emerald-500" />
           </div>
 
           <div id="obStep2Err" class="hidden text-xs text-rose-500 font-semibold bg-rose-500/10 p-2.5 rounded-xl"></div>
         </div>
 
-        <button onclick="submitOnboardingStep2()" class="w-full py-3.5 rounded-2xl bg-slate-900 dark:bg-emerald-500 text-white dark:text-slate-950 font-extrabold text-xs shadow-md">
-          Continue to Body Metrics (Step 2 of 3) ▶
+        <button id="btnObStep2" onclick="submitOnboardingStep2()" class="w-full py-3.5 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-xs shadow-lg shadow-emerald-600/20 transition">
+          🚀 Create Username & Set Body Goals ▶
         </button>
+
+        <div class="pt-3 border-t border-slate-100 dark:border-slate-800 space-y-2.5">
+          <div class="flex items-center justify-between text-[11px]">
+            <span class="font-bold text-slate-600 dark:text-slate-300">🎬 Watch: How Meal Prep Studio Works (1-Min Video)</span>
+          </div>
+          ${buildInfographicVideoPlayerHTML()}
+        </div>
       </div>
     `;
     return;
@@ -3005,7 +3002,7 @@ function renderOnboardingStep(keepPlaying = false) {
           <span class="text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full bg-emerald-50 dark:bg-emerald-500/15 text-emerald-600 dark:text-emerald-400">
             Step 2 of 3 • Body Metrics & Metabolism
           </span>
-          <button onclick="onboardingDraft.step=2; renderOnboardingStep();" class="text-xs text-slate-400 font-semibold">◀ Back</button>
+          <button onclick="onboardingDraft.step=1; renderOnboardingStep();" class="text-xs text-slate-400 font-semibold">◀ Back</button>
         </div>
 
         <div>
@@ -3166,9 +3163,10 @@ async function submitOnboardingStep2() {
   const rawName = (document.getElementById('obName')?.value || '').trim();
   const pin = (document.getElementById('obPin')?.value || '').trim();
   const errEl = document.getElementById('obStep2Err');
+  const btn = document.getElementById('btnObStep2');
 
   if (!rawName || rawName.length < 2) {
-    errEl.textContent = 'Please enter your First Name (at least 2 characters).';
+    errEl.textContent = 'Please enter a username / first name (at least 2 characters).';
     errEl.classList.remove('hidden');
     return;
   }
@@ -3179,12 +3177,38 @@ async function submitOnboardingStep2() {
   }
 
   const cleanUser = rawName.toLowerCase().replace(/[^a-z0-9]/g, '');
+  if (!cleanUser || cleanUser.length < 2) {
+    errEl.textContent = 'Please use letters or numbers for your username.';
+    errEl.classList.remove('hidden');
+    return;
+  }
   if (cleanUser === 'mo') {
-    errEl.textContent = 'The username "Mo" is reserved for Mo\'s profile! Please use your own name (or sign in on the previous screen if you are Mo).';
+    errEl.textContent = 'The username "Mo" is already taken. Please create your own username (or click Sign In if you are Mo).';
     errEl.classList.remove('hidden');
     return;
   }
 
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = '⏳ Checking username availability...';
+  }
+  try {
+    const resp = await fetch(getFirebaseUserUrl(cleanUser));
+    if (resp.ok) {
+      const existing = await resp.json();
+      if (existing && existing.profile) {
+        errEl.textContent = `Username "${rawName}" already exists! Choose another username (e.g., ${rawName}2) or click Sign In at the top right.`;
+        errEl.classList.remove('hidden');
+        if (btn) {
+          btn.disabled = false;
+          btn.textContent = '🚀 Create Username & Set Body Goals ▶';
+        }
+        return;
+      }
+    }
+  } catch (e) {}
+
+  stopInfographicVideo();
   onboardingDraft.displayName = rawName;
   onboardingDraft.username = cleanUser;
   onboardingDraft.pin = pin;
