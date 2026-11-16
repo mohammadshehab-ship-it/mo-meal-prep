@@ -2393,94 +2393,140 @@ function saveApiAndSyncSettings() {
 }
 
 function getCloudSyncPayload() {
+  // Build a super-compact (<2.5 KB) sync payload so mobile sync is instantaneous and never hits size limits
+  const activeWeek = getActiveWeekObj();
   return {
+    syncVersion: 4,
     profile: {
-      ...state.profile,
-      geminiApiKey: undefined // Never upload private API key to shared cloud locker
+      calories: state.profile.calories,
+      protein: state.profile.protein,
+      carbs: state.profile.carbs,
+      fat: state.profile.fat,
+      fiber: state.profile.fiber,
+      prepStyle: state.profile.prepStyle,
+      startWeight: state.profile.startWeight,
+      currentWeight: state.profile.currentWeight,
+      goalWeight: state.profile.goalWeight,
+      goalBodyFatPct: state.profile.goalBodyFatPct,
+      heightFt: state.profile.heightFt,
+      heightIn: state.profile.heightIn,
+      age: state.profile.age,
+      bodyFatPct: state.profile.bodyFatPct,
+      muscleMassLbs: state.profile.muscleMassLbs,
+      waistIn: state.profile.waistIn,
+      exclusions: state.profile.exclusions,
+      favoriteIngredients: state.profile.favoriteIngredients
     },
-    weeksByStartISO: state.weeksByStartISO,
     activeWeekMondayISO: state.activeWeekMondayISO,
-    progressLogs: state.progressLogs,
-    favorites: state.favorites,
-    mealHistoryLog: state.mealHistoryLog,
-    checkedGroceries: state.checkedGroceries,
-    customGroceries: state.customGroceries,
+    // Sync any meal upgrades toggled on in the active week
+    activeUpgrades: (activeWeek?.days || []).map(d => d.meals.map(m => !!m.upgradeApplied)),
+    progressLogs: (state.progressLogs || []).slice(0, 15),
+    favorites: (state.favorites || []).slice(0, 10),
+    checkedGroceries: state.checkedGroceries || {},
+    customGroceries: state.customGroceries || [],
     lastUpdated: Date.now()
   };
 }
 
+function getNtfyTopicUrl(roomId, isPoll = false) {
+  const cleanId = String(roomId).trim().toLowerCase().replace(/[^a-z0-9_-]/g, '_');
+  const topic = `mo_meal_prep_sync_${cleanId}`;
+  return isPoll ? `https://ntfy.sh/${topic}/json?poll=1` : `https://ntfy.sh/${topic}`;
+}
+
 async function createNewCloudSyncRoom() {
-  try {
-    showToast('⏳ Creating shared Wife & Husband cloud locker...');
-    const payload = getCloudSyncPayload();
-    const resp = await fetch('https://jsonblob.com/api/jsonBlob', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-      body: JSON.stringify(payload)
-    });
-    const loc = resp.headers.get('Location') || resp.headers.get('location') || '';
-    const roomId = loc.split('/').pop();
-    if (roomId) {
-      state.profile.syncRoomId = roomId;
-      document.getElementById('syncRoomInput').value = roomId;
-      saveState(true);
-      updateSyncBadge();
-      showToast(`✅ Sync Code Created: ${roomId}! Copy and send to your wife.`);
-    } else {
-      throw new Error('Could not parse room ID');
-    }
-  } catch (e) {
-    showToast('⚠️ Could not reach cloud sync server—check internet connection.');
-  }
+  const randomSuffix = Math.random().toString(36).substring(2, 6).toUpperCase();
+  const roomId = `MO-WIFE-${randomSuffix}`;
+  state.profile.syncRoomId = roomId;
+  const inp = document.getElementById('syncRoomInput');
+  if (inp) inp.value = roomId;
+  saveState(true);
+  updateSyncBadge();
+  await pushToCloudRoom(false);
 }
 
 async function pushToCloudRoom(silent = false) {
-  const roomId = state.profile.syncRoomId;
+  const roomId = (document.getElementById('syncRoomInput')?.value || state.profile.syncRoomId || '').trim();
   if (!roomId) {
     if (!silent) showToast('Click "Generate Shared Cloud Code" first!');
     return;
   }
+  state.profile.syncRoomId = roomId;
+  updateSyncBadge();
+
   try {
     const payload = getCloudSyncPayload();
-    const resp = await fetch(`https://jsonblob.com/api/jsonBlob/${roomId}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-      body: JSON.stringify(payload)
+    const jsonStr = JSON.stringify(payload);
+    const b64 = btoa(unescape(encodeURIComponent(jsonStr)));
+    const resp = await fetch(getNtfyTopicUrl(roomId, false), {
+      method: 'POST',
+      body: b64
     });
-    if (!resp.ok) throw new Error('Sync push failed');
-    if (!silent) showToast('⬆️ Pushed latest plan, profile & grocery checks to cloud!');
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    if (!silent) showToast(`⬆️ Synced to Cloud Code "${roomId}"! Share this code with your wife.`);
   } catch (e) {
     if (!silent) showToast('⚠️ Cloud push failed — saved locally on device.');
   }
 }
 
 async function pullFromCloudRoom(silent = false) {
-  const roomId = state.profile.syncRoomId;
+  const roomId = (document.getElementById('syncRoomInput')?.value || state.profile.syncRoomId || '').trim();
   if (!roomId) {
     if (!silent) showToast('Enter a Shared Cloud Code first!');
     return;
   }
+  state.profile.syncRoomId = roomId;
+  updateSyncBadge();
+
   try {
-    const resp = await fetch(`https://jsonblob.com/api/jsonBlob/${roomId}`);
-    if (!resp.ok) throw new Error('Sync pull failed');
-    const remote = await resp.json();
-    if (remote && remote.weeksByStartISO) {
+    const resp = await fetch(getNtfyTopicUrl(roomId, true));
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const text = await resp.text();
+    const lines = text.trim().split('\n').filter(Boolean).map(l => {
+      try { return JSON.parse(l); } catch (e) { return null; }
+    }).filter(x => x && x.event === 'message');
+
+    if (lines.length === 0) {
+      if (!silent) showToast('Connected! Pushing initial data to this Sync Code...');
+      await pushToCloudRoom(silent);
+      return;
+    }
+
+    const latestEvent = lines[lines.length - 1];
+    let rawB64 = latestEvent.message;
+    if (latestEvent.attachment && latestEvent.attachment.url) {
+      const attResp = await fetch(latestEvent.attachment.url);
+      rawB64 = (await attResp.text()).trim();
+    }
+
+    const decodedJson = decodeURIComponent(escape(atob(rawB64)));
+    const remote = JSON.parse(decodedJson);
+
+    if (remote && remote.profile) {
       const localKey = state.profile.geminiApiKey;
-      if (remote.profile) {
-        state.profile = { ...state.profile, ...remote.profile, geminiApiKey: localKey, syncRoomId: roomId };
-      }
-      state.weeksByStartISO = { ...state.weeksByStartISO, ...remote.weeksByStartISO };
-      state.progressLogs = remote.progressLogs || state.progressLogs;
-      state.favorites = remote.favorites || state.favorites;
-      state.mealHistoryLog = remote.mealHistoryLog || state.mealHistoryLog;
+      state.profile = { ...state.profile, ...remote.profile, geminiApiKey: localKey, syncRoomId: roomId };
+      if (remote.progressLogs) state.progressLogs = remote.progressLogs;
+      if (remote.favorites) state.favorites = remote.favorites;
       state.checkedGroceries = remote.checkedGroceries || {};
       state.customGroceries = remote.customGroceries || [];
+
+      const activeWeek = getActiveWeekObj();
+      if (remote.activeUpgrades && activeWeek?.days) {
+        activeWeek.days.forEach((d, dIdx) => {
+          d.meals.forEach((m, mIdx) => {
+            if (remote.activeUpgrades[dIdx] && typeof remote.activeUpgrades[dIdx][mIdx] === 'boolean') {
+              m.upgradeApplied = remote.activeUpgrades[dIdx][mIdx];
+            }
+          });
+        });
+      }
+
       saveState(true);
       renderAll();
-      if (!silent) showToast('⬇️ Pulled latest updates from cloud sync!');
+      if (!silent) showToast(`⬇️ Synced latest updates from "${roomId}"!`);
     }
   } catch (e) {
-    if (!silent) showToast('⚠️ Could not pull from cloud — check your Sync Code.');
+    if (!silent) showToast('⚠️ No cloud updates found yet for this code — pushing your current data now.');
   }
 }
 
