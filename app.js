@@ -1235,17 +1235,24 @@ async function generateSingleMeal() {
 
   try {
     let generatedMeal = null;
+    let usedLiveGemini = false;
     if (state.profile.geminiApiKey && state.profile.geminiApiKey.trim().length > 10) {
       generatedMeal = await callGeminiSingleRecipe({ slot, protein, cuisine, appliance, note, targetCal, targetProt, targetCarbs, targetFat, targetFib });
+      usedLiveGemini = true;
     } else {
       generatedMeal = buildSmartLocalRecipe({ slot, protein, cuisine, appliance, note, targetCal, targetProt, targetCarbs, targetFat, targetFib });
     }
 
     out.innerHTML = `
-      <div class="text-xs font-bold text-emerald-400 uppercase tracking-wider px-1">✨ Generated Just For You (Scaled to ${state.profile.calories.toLocaleString()} kcal Daily Goal):</div>
+      <div class="flex items-center justify-between px-1">
+        <span class="text-xs font-bold text-emerald-400 uppercase tracking-wider">✨ Generated Just For You (Scaled to ${state.profile.calories.toLocaleString()} kcal Daily Goal):</span>
+        <span class="text-[10px] font-bold px-2.5 py-0.5 rounded-full ${usedLiveGemini ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40' : 'bg-slate-800 text-slate-300 border border-slate-700'}">
+          ${usedLiveGemini ? '🤖 Live Google Gemini AI' : '👨‍🍳 Built-In Chef Engine'}
+        </span>
+      </div>
       ${renderMealCardHTML(generatedMeal, 0, 0, true)}
     `;
-    showToast('🔥 Custom recipe generated!');
+    showToast(usedLiveGemini ? '🤖 Live Gemini AI recipe generated!' : '🔥 Custom recipe generated!');
   } catch (err) {
     const fallback = buildSmartLocalRecipe({ slot, protein, cuisine, appliance, note, targetCal, targetProt, targetCarbs, targetFat, targetFib });
     out.innerHTML = renderMealCardHTML(fallback, 0, 0, true);
@@ -2307,17 +2314,70 @@ function removeFavIngredient(idx) {
   renderProfileAndProgressTab();
 }
 
-// ================= WIFE REAL-TIME CLOUD SYNC =================
+// ================= WIFE REAL-TIME CLOUD SYNC & GEMINI KEY TESTER =================
+async function testGeminiApiKey() {
+  const keyInput = document.getElementById('geminiKeyInput');
+  const statusBox = document.getElementById('geminiTestStatus');
+  const btn = document.getElementById('btnTestGemini');
+  const key = (keyInput?.value || state.profile.geminiApiKey || '').trim();
+
+  if (!key || key.length < 15) {
+    statusBox.classList.remove('hidden');
+    statusBox.className = 'mt-1.5 text-xs px-3 py-2 rounded-lg border bg-rose-500/15 border-rose-500/40 text-rose-300';
+    statusBox.textContent = '⚠️ Please paste your Gemini API key (starts with AIzaSy...) into the box first.';
+    return;
+  }
+
+  state.profile.geminiApiKey = key;
+  saveState(true);
+  btn.textContent = '⏳ Testing...';
+  btn.disabled = true;
+
+  try {
+    const resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${encodeURIComponent(key)}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: 'Reply with the exact phrase: Gemini Chef Connected!' }] }]
+      })
+    });
+    if (!resp.ok) {
+      const errData = await resp.json().catch(() => ({}));
+      throw new Error(errData?.error?.message || `HTTP ${resp.status}`);
+    }
+    const data = await resp.json();
+    const reply = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || 'Connected!';
+    statusBox.classList.remove('hidden');
+    statusBox.className = 'mt-1.5 text-xs px-3 py-2 rounded-lg border bg-emerald-500/15 border-emerald-500/40 text-emerald-300 font-semibold';
+    statusBox.textContent = `✅ Gemini API Key Verified & Working! Response: "${reply}" — Your key is saved.`;
+    showToast('✅ Gemini API Key is working!');
+  } catch (e) {
+    statusBox.classList.remove('hidden');
+    statusBox.className = 'mt-1.5 text-xs px-3 py-2 rounded-lg border bg-rose-500/15 border-rose-500/40 text-rose-300';
+    statusBox.textContent = `❌ Key Test Failed: ${e.message}. Check that you copied the full key from Google AI Studio.`;
+  } finally {
+    btn.textContent = '🧪 Test Gemini Key';
+    btn.disabled = false;
+  }
+}
+
 function updateSyncBadge() {
   const dot = document.getElementById('syncDot');
   const txt = document.getElementById('syncText');
+  const detail = document.getElementById('syncStatusDetail');
   if (!dot || !txt) return;
   if (state.profile.syncRoomId) {
     dot.className = 'w-2 h-2 rounded-full bg-sky-400 animate-pulse';
     txt.textContent = `Wife Sync: ${state.profile.syncRoomId.slice(0, 8)}`;
+    if (detail) {
+      detail.innerHTML = `✅ <strong class="text-sky-400">Connected to Shared Sync Code: <code>${state.profile.syncRoomId}</code></strong> — Enter this same code on your wife's phone! Auto-syncs every 15 seconds.`;
+    }
   } else {
     dot.className = 'w-2 h-2 rounded-full bg-emerald-400';
     txt.textContent = 'Profile & Sync';
+    if (detail) {
+      detail.textContent = 'Status: Saving automatically on this device. Click "Generate Shared Cloud Code" above to link your phone and your wife\'s phone!';
+    }
   }
 }
 
@@ -2326,23 +2386,33 @@ function saveApiAndSyncSettings() {
   state.profile.syncRoomId = document.getElementById('syncRoomInput').value.trim();
   saveState();
   updateSyncBadge();
-  showToast('Settings saved!');
+  showToast('✅ API Key & Sync Code saved!');
   if (state.profile.syncRoomId) {
-    pullFromCloudRoom();
+    pullFromCloudRoom(false);
   }
+}
+
+function getCloudSyncPayload() {
+  return {
+    profile: {
+      ...state.profile,
+      geminiApiKey: undefined // Never upload private API key to shared cloud locker
+    },
+    weeksByStartISO: state.weeksByStartISO,
+    activeWeekMondayISO: state.activeWeekMondayISO,
+    progressLogs: state.progressLogs,
+    favorites: state.favorites,
+    mealHistoryLog: state.mealHistoryLog,
+    checkedGroceries: state.checkedGroceries,
+    customGroceries: state.customGroceries,
+    lastUpdated: Date.now()
+  };
 }
 
 async function createNewCloudSyncRoom() {
   try {
-    showToast('Creating shared Wife & Husband cloud sync box...');
-    const payload = {
-      weeksByStartISO: state.weeksByStartISO,
-      activeWeekMondayISO: state.activeWeekMondayISO,
-      favorites: state.favorites,
-      checkedGroceries: state.checkedGroceries,
-      customGroceries: state.customGroceries,
-      lastUpdated: Date.now()
-    };
+    showToast('⏳ Creating shared Wife & Husband cloud locker...');
+    const payload = getCloudSyncPayload();
     const resp = await fetch('https://jsonblob.com/api/jsonBlob', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
@@ -2355,67 +2425,68 @@ async function createNewCloudSyncRoom() {
       document.getElementById('syncRoomInput').value = roomId;
       saveState(true);
       updateSyncBadge();
-      showToast(`✅ Sync Code Created: ${roomId}! Share this code with your wife.`);
+      showToast(`✅ Sync Code Created: ${roomId}! Copy and send to your wife.`);
     } else {
       throw new Error('Could not parse room ID');
     }
   } catch (e) {
-    const localCode = 'MO-' + Math.random().toString(36).substring(2, 7).toUpperCase();
-    state.profile.syncRoomId = localCode;
-    document.getElementById('syncRoomInput').value = localCode;
-    saveState(true);
-    updateSyncBadge();
-    showToast(`Sync ID set to ${localCode}`);
+    showToast('⚠️ Could not reach cloud sync server—check internet connection.');
   }
 }
 
 async function pushToCloudRoom(silent = false) {
   const roomId = state.profile.syncRoomId;
-  if (!roomId || roomId.startsWith('MO-')) return;
+  if (!roomId) {
+    if (!silent) showToast('Click "Generate Shared Cloud Code" first!');
+    return;
+  }
   try {
-    const payload = {
-      weeksByStartISO: state.weeksByStartISO,
-      activeWeekMondayISO: state.activeWeekMondayISO,
-      favorites: state.favorites,
-      checkedGroceries: state.checkedGroceries,
-      customGroceries: state.customGroceries,
-      lastUpdated: Date.now()
-    };
-    await fetch(`https://jsonblob.com/api/jsonBlob/${roomId}`, {
+    const payload = getCloudSyncPayload();
+    const resp = await fetch(`https://jsonblob.com/api/jsonBlob/${roomId}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
       body: JSON.stringify(payload)
     });
-    if (!silent) showToast('⬆️ Synced latest plan & checkboxes to your wife!');
+    if (!resp.ok) throw new Error('Sync push failed');
+    if (!silent) showToast('⬆️ Pushed latest plan, profile & grocery checks to cloud!');
   } catch (e) {
-    if (!silent) showToast('Saved locally on device.');
+    if (!silent) showToast('⚠️ Cloud push failed — saved locally on device.');
   }
 }
 
 async function pullFromCloudRoom(silent = false) {
   const roomId = state.profile.syncRoomId;
-  if (!roomId || roomId.startsWith('MO-')) return;
+  if (!roomId) {
+    if (!silent) showToast('Enter a Shared Cloud Code first!');
+    return;
+  }
   try {
     const resp = await fetch(`https://jsonblob.com/api/jsonBlob/${roomId}`);
-    if (!resp.ok) return;
+    if (!resp.ok) throw new Error('Sync pull failed');
     const remote = await resp.json();
     if (remote && remote.weeksByStartISO) {
+      const localKey = state.profile.geminiApiKey;
+      if (remote.profile) {
+        state.profile = { ...state.profile, ...remote.profile, geminiApiKey: localKey, syncRoomId: roomId };
+      }
       state.weeksByStartISO = { ...state.weeksByStartISO, ...remote.weeksByStartISO };
+      state.progressLogs = remote.progressLogs || state.progressLogs;
       state.favorites = remote.favorites || state.favorites;
+      state.mealHistoryLog = remote.mealHistoryLog || state.mealHistoryLog;
       state.checkedGroceries = remote.checkedGroceries || {};
       state.customGroceries = remote.customGroceries || [];
       saveState(true);
       renderAll();
-      if (!silent) showToast('⬇️ Synced latest updates from your wife!');
+      if (!silent) showToast('⬇️ Pulled latest updates from cloud sync!');
     }
   } catch (e) {
-    if (!silent) showToast('Using local device state.');
+    if (!silent) showToast('⚠️ Could not pull from cloud — check your Sync Code.');
   }
 }
 
 function startAutoCloudSyncPolling() {
   setInterval(() => {
-    if (state.profile.syncRoomId && !state.profile.syncRoomId.startsWith('MO-')) {
+    if (state.profile.syncRoomId) {
       pullFromCloudRoom(true);
     }
   }, 15000);
@@ -2425,8 +2496,31 @@ function exportBackupJson() {
   const dataStr = 'data:text/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(state, null, 2));
   const a = document.createElement('a');
   a.setAttribute('href', dataStr);
-  a.setAttribute('download', 'mo-meal-prep-backup.json');
+  a.setAttribute('download', `mo-meal-prep-backup-${formatDateISO(new Date())}.json`);
   document.body.appendChild(a);
   a.click();
   a.remove();
+  showToast('💾 Full backup downloaded!');
+}
+
+function importBackupJson(event) {
+  const file = event.target.files?.[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try {
+      const imported = JSON.parse(e.target.result);
+      if (imported && imported.profile) {
+        state = { ...state, ...imported };
+        saveState();
+        renderAll();
+        showToast('✅ Backup file restored successfully!');
+      } else {
+        showToast('❌ Invalid backup file.');
+      }
+    } catch (err) {
+      showToast('❌ Could not read backup file.');
+    }
+  };
+  reader.readAsText(file);
 }
