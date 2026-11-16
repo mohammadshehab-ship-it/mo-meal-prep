@@ -64,6 +64,24 @@
     .anim-delay-3 { animation-delay: 0.40s; opacity: 0; }
     .anim-glow { animation: pulseGlow 2.4s infinite; }
     .anim-bar { animation: barFill 1.1s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+    .scene-layer {
+      transition: opacity 0.75s cubic-bezier(0.16, 1, 0.3, 1), transform 0.75s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .scene-active {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+      position: relative;
+      z-index: 10;
+      pointer-events: auto;
+    }
+    .scene-inactive {
+      opacity: 0;
+      transform: translateY(8px) scale(0.985);
+      position: absolute;
+      inset: 0;
+      z-index: 0;
+      pointer-events: none;
+    }
   </style>
 </head>
 <body class="min-h-screen pb-28 transition-colors duration-200 selection:bg-emerald-500 selection:text-white">

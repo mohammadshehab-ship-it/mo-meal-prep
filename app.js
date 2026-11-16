@@ -2519,134 +2519,209 @@ const APP_TOUR_SLIDES = [
   }
 ];
 
-let _tourAutoPlayTimer = null;
-let _tourPlaying = false;
-let _tourVoiceEnabled = false;
+// Exact start/end timestamps (seconds) in tour-audio.mp3 for each of the 4 scenes
+const SCENE_TIMESTAMPS = [
+  { start: 0.0, end: 27.89 },
+  { start: 27.89, end: 57.10 },
+  { start: 57.10, end: 87.39 },
+  { start: 87.39, end: 112.61 }
+];
+const TOTAL_VIDEO_DURATION = 112.61;
 
-function toggleInfographicVideoPlay(inModal = false) {
-  _tourPlaying = !_tourPlaying;
-  if (_tourPlaying) {
-    runInfographicVideoLoop(inModal);
-  } else {
-    stopInfographicVideo();
-    if (inModal) renderTourInsideModal(document.getElementById('appModalContent'));
-    else renderOnboardingStep();
+let _tourAudioEl = null;
+let _tourPlaying = false;
+let _tourMuted = false;
+
+function getOrCreateTourAudio() {
+  if (!_tourAudioEl) {
+    _tourAudioEl = new Audio('./tour-audio.mp3');
+    _tourAudioEl.preload = 'auto';
+    _tourAudioEl.addEventListener('timeupdate', onTourAudioTimeUpdate);
+    _tourAudioEl.addEventListener('ended', () => {
+      _tourPlaying = false;
+      updateVideoPlayerControlsDOM();
+    });
+  }
+  return _tourAudioEl;
+}
+
+function formatTimeMMSS(sec) {
+  const s = Math.max(0, Math.floor(sec || 0));
+  const m = Math.floor(s / 60);
+  const rem = String(s % 60).padStart(2, '0');
+  return `${m}:${rem}`;
+}
+
+// Runs 60x/sec during playback — updates progress bar & smoothly cross-fades scenes without rebuilding DOM!
+function onTourAudioTimeUpdate() {
+  if (!_tourAudioEl) return;
+  const t = _tourAudioEl.currentTime || 0;
+  const dur = _tourAudioEl.duration || TOTAL_VIDEO_DURATION;
+  const pct = Math.min(100, (t / dur) * 100);
+
+  const barEl = document.getElementById('tourProgressBarFill');
+  const timeEl = document.getElementById('tourTimecodeText');
+  if (barEl) barEl.style.width = `${pct.toFixed(1)}%`;
+  if (timeEl) timeEl.textContent = `${formatTimeMMSS(t)} / ${formatTimeMMSS(dur)}`;
+
+  // Determine which scene corresponds to current audio timestamp
+  let newSceneIdx = 0;
+  for (let i = 0; i < SCENE_TIMESTAMPS.length; i++) {
+    if (t >= SCENE_TIMESTAMPS[i].start) {
+      newSceneIdx = i;
+    }
+  }
+
+  if (newSceneIdx !== onboardingDraft.tourSlide) {
+    onboardingDraft.tourSlide = newSceneIdx;
+    crossfadeToSceneDOM(newSceneIdx);
   }
 }
 
-function toggleInfographicVoice(inModal = false) {
-  _tourVoiceEnabled = !_tourVoiceEnabled;
-  if (!_tourVoiceEnabled) {
-    stopTourSpeech();
-  } else {
-    const slide = APP_TOUR_SLIDES[onboardingDraft.tourSlide] || APP_TOUR_SLIDES[0];
-    speakTourSlide(slide.speech);
+// Smoothly cross-dissolve between the 4 pre-mounted scene layers without touching innerHTML!
+function crossfadeToSceneDOM(activeIdx) {
+  for (let i = 0; i < APP_TOUR_SLIDES.length; i++) {
+    const layer = document.getElementById(`tourSceneLayer-${i}`);
+    const tab = document.getElementById(`tourChapterTab-${i}`);
+    if (layer) {
+      layer.className = i === activeIdx ? 'scene-layer scene-active space-y-2 py-1' : 'scene-layer scene-inactive space-y-2 py-1';
+    }
+    if (tab) {
+      tab.className = i === activeIdx
+        ? 'py-1.5 px-1 rounded-xl font-bold truncate transition bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+        : 'py-1.5 px-1 rounded-xl font-semibold truncate transition text-slate-400 hover:text-slate-200 border border-transparent';
+    }
   }
-  if (inModal) renderTourInsideModal(document.getElementById('appModalContent'));
-  else renderOnboardingStep();
+}
+
+function updateVideoPlayerControlsDOM() {
+  const playBtn = document.getElementById('tourPlayPauseBtn');
+  const muteBtn = document.getElementById('tourMuteBtn');
+  if (playBtn) {
+    playBtn.className = `px-3.5 py-1.5 rounded-full ${
+      _tourPlaying ? 'bg-amber-500 text-slate-950' : 'bg-emerald-500 text-slate-950'
+    } text-[11px] font-extrabold flex items-center gap-1.5 shadow transition`;
+    playBtn.innerHTML = `<span>${_tourPlaying ? '⏸️ Pause Video' : '▶️ Play Infographic Video'}</span>`;
+  }
+  if (muteBtn) {
+    muteBtn.className = `px-2.5 py-1.5 rounded-full ${
+      !_tourMuted ? 'bg-sky-500/25 text-sky-300 border border-sky-500/40' : 'bg-slate-800 text-slate-400'
+    } text-[11px] font-bold transition`;
+    muteBtn.textContent = !_tourMuted ? '🔊 Human Voice ON' : '🔇 Muted';
+  }
+}
+
+function toggleInfographicVideoPlay() {
+  const audio = getOrCreateTourAudio();
+  if (_tourPlaying) {
+    audio.pause();
+    _tourPlaying = false;
+  } else {
+    if (audio.ended || audio.currentTime >= TOTAL_VIDEO_DURATION - 0.5) {
+      audio.currentTime = 0;
+      onboardingDraft.tourSlide = 0;
+      crossfadeToSceneDOM(0);
+    }
+    audio.muted = _tourMuted;
+    audio.play().catch(() => {});
+    _tourPlaying = true;
+  }
+  updateVideoPlayerControlsDOM();
+}
+
+function toggleInfographicVoice() {
+  _tourMuted = !_tourMuted;
+  if (_tourAudioEl) {
+    _tourAudioEl.muted = _tourMuted;
+  }
+  updateVideoPlayerControlsDOM();
+}
+
+function seekToTourScene(sceneIdx) {
+  onboardingDraft.tourSlide = sceneIdx;
+  crossfadeToSceneDOM(sceneIdx);
+  const audio = getOrCreateTourAudio();
+  const targetSec = SCENE_TIMESTAMPS[sceneIdx]?.start || 0;
+  try {
+    audio.currentTime = targetSec;
+  } catch (e) {}
+  const pct = (targetSec / TOTAL_VIDEO_DURATION) * 100;
+  const barEl = document.getElementById('tourProgressBarFill');
+  const timeEl = document.getElementById('tourTimecodeText');
+  if (barEl) barEl.style.width = `${pct.toFixed(1)}%`;
+  if (timeEl) timeEl.textContent = `${formatTimeMMSS(targetSec)} / ${formatTimeMMSS(TOTAL_VIDEO_DURATION)}`;
+}
+
+function stepTourSceneDelta(delta) {
+  const nextIdx = Math.max(0, Math.min(APP_TOUR_SLIDES.length - 1, onboardingDraft.tourSlide + delta));
+  seekToTourScene(nextIdx);
 }
 
 function stopInfographicVideo() {
   _tourPlaying = false;
-  if (_tourAutoPlayTimer) {
-    clearTimeout(_tourAutoPlayTimer);
-    _tourAutoPlayTimer = null;
+  if (_tourAudioEl) {
+    try { _tourAudioEl.pause(); } catch (e) {}
   }
-  stopTourSpeech();
 }
 
-function runInfographicVideoLoop(inModal = false) {
-  if (_tourAutoPlayTimer) clearTimeout(_tourAutoPlayTimer);
-  const slide = APP_TOUR_SLIDES[onboardingDraft.tourSlide] || APP_TOUR_SLIDES[0];
-
-  if (inModal) renderTourInsideModal(document.getElementById('appModalContent'), true);
-  else renderOnboardingStep(true);
-
-  if (_tourVoiceEnabled) {
-    speakTourSlide(slide.speech);
-  }
-
-  _tourAutoPlayTimer = setTimeout(() => {
-    if (!_tourPlaying) return;
-    if (onboardingDraft.tourSlide < APP_TOUR_SLIDES.length - 1) {
-      onboardingDraft.tourSlide++;
-      runInfographicVideoLoop(inModal);
-    } else {
-      _tourPlaying = false;
-      if (inModal) renderTourInsideModal(document.getElementById('appModalContent'));
-      else renderOnboardingStep();
-    }
-  }, (slide.durationSec || 10) * 1000);
+function stopTourSpeech() {
+  stopInfographicVideo();
 }
 
-function buildInfographicVideoPlayerHTML(inModal = false) {
-  const slide = APP_TOUR_SLIDES[onboardingDraft.tourSlide] || APP_TOUR_SLIDES[0];
-  const totalSlides = APP_TOUR_SLIDES.length;
-  const idx = onboardingDraft.tourSlide;
-  const pct = Math.round(((idx + 1) / totalSlides) * 100);
+function buildInfographicVideoPlayerHTML() {
+  const idx = onboardingDraft.tourSlide || 0;
+  const startSec = SCENE_TIMESTAMPS[idx]?.start || 0;
+  const pct = (startSec / TOTAL_VIDEO_DURATION) * 100;
 
   return `
-    <!-- Cinematic Animated Infographic Video Player -->
-    <div class="rounded-3xl bg-gradient-to-br from-slate-900 via-[#11192c] to-slate-950 text-white p-5 space-y-3.5 shadow-2xl border border-slate-800 relative overflow-hidden">
+    <!-- Seamless Continuous Animated Infographic Video Player with Studio Human Neural Audio -->
+    <div class="rounded-3xl bg-gradient-to-br from-slate-900 via-[#11192c] to-slate-950 text-white p-5 space-y-4 shadow-2xl border border-slate-800 relative overflow-hidden">
       <!-- Top Video Player Controls Bar -->
-      <div class="flex items-center justify-between gap-2 pb-2 border-b border-slate-800/90">
+      <div class="flex items-center justify-between gap-2 pb-2.5 border-b border-slate-800/90">
         <div class="flex items-center gap-2">
-          <button onclick="toggleInfographicVideoPlay(${inModal})" class="px-3 py-1.5 rounded-full ${
+          <button id="tourPlayPauseBtn" onclick="toggleInfographicVideoPlay()" class="px-3.5 py-1.5 rounded-full ${
             _tourPlaying ? 'bg-amber-500 text-slate-950' : 'bg-emerald-500 text-slate-950'
-          } text-[11px] font-extrabold flex items-center gap-1 shadow transition">
+          } text-[11px] font-extrabold flex items-center gap-1.5 shadow transition">
             <span>${_tourPlaying ? '⏸️ Pause Video' : '▶️ Play Infographic Video'}</span>
           </button>
-          <button onclick="toggleInfographicVoice(${inModal})" class="px-2.5 py-1.5 rounded-full ${
-            _tourVoiceEnabled ? 'bg-sky-500/25 text-sky-300 border border-sky-500/40' : 'bg-slate-800 text-slate-400'
-          } text-[11px] font-bold transition" title="Toggle Voiceover Narration">
-            ${_tourVoiceEnabled ? '🔊 Voice ON' : '🔇 Voice OFF'}
+          <button id="tourMuteBtn" onclick="toggleInfographicVoice()" class="px-2.5 py-1.5 rounded-full ${
+            !_tourMuted ? 'bg-sky-500/25 text-sky-300 border border-sky-500/40' : 'bg-slate-800 text-slate-400'
+          } text-[11px] font-bold transition" title="Toggle Studio Human Voiceover">
+            ${!_tourMuted ? '🔊 Human Voice ON' : '🔇 Muted'}
           </button>
         </div>
-        <span class="text-[11px] font-mono text-slate-400">0:${String((idx + 1) * 15).padStart(2, '0')} / 1:00</span>
+        <span id="tourTimecodeText" class="text-[11px] font-mono text-slate-400">${formatTimeMMSS(startSec)} / 1:52</span>
       </div>
 
-      <!-- Scene Header & Animated Infographic Stage -->
-      <div class="space-y-2 py-1">
-        <div class="text-[10px] font-extrabold uppercase tracking-wider text-emerald-400">${slide.badge}</div>
-        <h2 class="text-base sm:text-lg font-extrabold leading-snug anim-float">${slide.title}</h2>
-        <p class="text-xs text-slate-300 leading-relaxed anim-float">${slide.desc}</p>
-        ${slide.infographicHTML || ''}
+      <!-- Continuous Cross-Dissolve Stage (All 4 scenes mounted simultaneously for zero-cut transitions!) -->
+      <div class="relative min-h-[215px]">
+        ${APP_TOUR_SLIDES.map((s, i) => `
+          <div id="tourSceneLayer-${i}" class="scene-layer ${i === idx ? 'scene-active' : 'scene-inactive'} space-y-2 py-1">
+            <div class="text-[10px] font-extrabold uppercase tracking-wider text-emerald-400">${s.badge}</div>
+            <h2 class="text-base sm:text-lg font-extrabold leading-snug">${s.title}</h2>
+            <p class="text-xs text-slate-300 leading-relaxed">${s.desc}</p>
+            ${s.infographicHTML || ''}
+          </div>
+        `).join('')}
       </div>
 
-      <!-- Video Timeline Scrubber Bar -->
-      <div class="space-y-1.5 pt-2">
+      <!-- Continuous 60fps Video Timeline Scrubber Bar & Chapter Tabs -->
+      <div class="space-y-2 pt-2 border-t border-slate-800/70">
         <div class="h-1.5 w-full bg-slate-800 rounded-full overflow-hidden">
-          <div class="h-full bg-gradient-to-r from-emerald-500 to-teal-400 transition-all duration-500" style="width: ${pct}%"></div>
+          <div id="tourProgressBarFill" class="h-full bg-gradient-to-r from-emerald-500 to-teal-400 transition-all duration-150" style="width: ${pct.toFixed(1)}%"></div>
         </div>
         <div class="grid grid-cols-4 gap-1 text-[10px] text-center">
           ${['1. Why Different', '2. Body Science', '3. Daily Meals', '4. Store Sync'].map((lbl, i) => `
-            <button onclick="stopInfographicVideo(); onboardingDraft.tourSlide=${i}; ${inModal ? "renderTourInsideModal(document.getElementById('appModalContent'))" : 'renderOnboardingStep()'};" class="py-1 rounded-lg font-semibold truncate transition ${
-              i === idx ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' : 'text-slate-500 hover:text-slate-300'
+            <button id="tourChapterTab-${i}" onclick="seekToTourScene(${i})" class="py-1.5 px-1 rounded-xl font-semibold truncate transition ${
+              i === idx
+                ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 font-bold'
+                : 'text-slate-400 hover:text-slate-200 border border-transparent'
             }">${lbl}</button>
           `).join('')}
         </div>
       </div>
     </div>
   `;
-}
-
-function speakTourSlide(text) {
-  try {
-    if ('speechSynthesis' in window) {
-      window.speechSynthesis.cancel();
-      const utter = new SpeechSynthesisUtterance(text);
-      utter.rate = 1.02;
-      window.speechSynthesis.speak(utter);
-    } else {
-      showToast('Voice narration not supported on this browser.');
-    }
-  } catch (e) {}
-}
-
-function stopTourSpeech() {
-  try {
-    if ('speechSynthesis' in window) window.speechSynthesis.cancel();
-  } catch (e) {}
 }
 
 function openAuthOverlay(mode = 'signin') {
@@ -2807,43 +2882,30 @@ function renderOnboardingStep(keepPlaying = false) {
 
   // STEP 1: INTERACTIVE ANIMATED INFOGRAPHIC VIDEO PLAYER
   if (s === 1) {
-    const totalSlides = APP_TOUR_SLIDES.length;
-    const idx = onboardingDraft.tourSlide;
-
     container.innerHTML = `
       <div class="soft-card rounded-3xl p-5 sm:p-6 space-y-4">
         <div class="flex items-center justify-between">
           <span class="text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full bg-emerald-50 dark:bg-emerald-500/15 text-emerald-600 dark:text-emerald-400">
-            🎬 What Makes This App Different (1-Min Infographic Video)
+            🎬 How Meal Prep Studio Works
           </span>
           <button onclick="stopInfographicVideo(); openAuthOverlay('signin');" class="text-xs text-slate-400 hover:text-slate-600 font-semibold">
             Sign In ✕
           </button>
         </div>
 
-        ${buildInfographicVideoPlayerHTML(false)}
+        ${buildInfographicVideoPlayerHTML()}
 
         <!-- Navigation Buttons -->
         <div class="flex items-center justify-between gap-2.5 pt-1">
-          ${idx > 0 ? `
-            <button onclick="stopInfographicVideo(); onboardingDraft.tourSlide--; renderOnboardingStep();" class="px-3.5 py-3 rounded-2xl bg-slate-100 dark:bg-slate-800 text-xs font-bold">
-              ◀ Prev Scene
-            </button>
-          ` : `
-            <button onclick="stopInfographicVideo(); onboardingDraft.step=2; renderOnboardingStep();" class="px-3.5 py-3 rounded-2xl text-slate-400 hover:text-slate-600 text-xs font-semibold">
-              Skip to Setup
-            </button>
-          `}
-
-          ${idx < totalSlides - 1 ? `
-            <button onclick="stopInfographicVideo(); onboardingDraft.tourSlide++; renderOnboardingStep();" class="flex-1 py-3 rounded-2xl bg-slate-900 dark:bg-emerald-500 text-white dark:text-slate-950 text-xs font-extrabold shadow-md">
-              Next Scene (${idx + 2}/${totalSlides}) ▶
-            </button>
-          ` : `
-            <button onclick="stopInfographicVideo(); onboardingDraft.step=2; renderOnboardingStep();" class="flex-1 py-3.5 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-extrabold shadow-lg">
-              🚀 Start Building My Profile (Step 1 of 3) ▶
-            </button>
-          `}
+          <button onclick="stepTourSceneDelta(-1)" class="px-3.5 py-3 rounded-2xl bg-slate-100 dark:bg-slate-800 text-xs font-bold">
+            ◀ Prev Scene
+          </button>
+          <button onclick="stepTourSceneDelta(1)" class="px-3.5 py-3 rounded-2xl bg-slate-100 dark:bg-slate-800 text-xs font-bold">
+            Next Scene ▶
+          </button>
+          <button onclick="stopInfographicVideo(); onboardingDraft.step=2; renderOnboardingStep();" class="flex-1 py-3.5 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-extrabold shadow-lg">
+            🚀 Build My Profile (Step 1 of 3) ▶
+          </button>
         </div>
       </div>
     `;
@@ -3212,30 +3274,25 @@ function openAppTourModal() {
 
 function renderTourInsideModal(contentEl, keepPlaying = false) {
   if (!keepPlaying) stopInfographicVideo();
-  const totalSlides = APP_TOUR_SLIDES.length;
-  const idx = onboardingDraft.tourSlide;
 
   contentEl.innerHTML = `
     <div class="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
-      <span class="text-xs font-extrabold text-emerald-600 dark:text-emerald-400">🎬 60-Second Infographic Video (${idx + 1}/${totalSlides})</span>
+      <span class="text-xs font-extrabold text-emerald-600 dark:text-emerald-400">🎬 How Meal Prep Studio Works</span>
       <button onclick="stopInfographicVideo(); closeModal();" class="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-500 font-bold">✕</button>
     </div>
 
-    ${buildInfographicVideoPlayerHTML(true)}
+    ${buildInfographicVideoPlayerHTML()}
 
     <div class="flex items-center justify-between gap-2 pt-1">
-      <button onclick="if(onboardingDraft.tourSlide>0){stopInfographicVideo(); onboardingDraft.tourSlide--; renderTourInsideModal(document.getElementById('appModalContent'));}" class="px-4 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-xs font-bold ${idx === 0 ? 'opacity-40 cursor-not-allowed' : ''}">
+      <button onclick="stepTourSceneDelta(-1)" class="px-4 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-xs font-bold">
         ◀ Prev Scene
       </button>
-      ${idx < totalSlides - 1 ? `
-        <button onclick="stopInfographicVideo(); onboardingDraft.tourSlide++; renderTourInsideModal(document.getElementById('appModalContent'));" class="flex-1 py-2.5 rounded-xl bg-slate-900 dark:bg-emerald-500 text-white dark:text-slate-950 text-xs font-bold">
-          Next Scene ▶
-        </button>
-      ` : `
-        <button onclick="stopInfographicVideo(); closeModal();" class="flex-1 py-2.5 rounded-xl bg-emerald-600 text-white text-xs font-bold">
-          ✓ Done Watching
-        </button>
-      `}
+      <button onclick="stepTourSceneDelta(1)" class="px-4 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-xs font-bold">
+        Next Scene ▶
+      </button>
+      <button onclick="stopInfographicVideo(); closeModal();" class="flex-1 py-2.5 rounded-xl bg-emerald-600 text-white text-xs font-bold">
+        ✓ Done Watching
+      </button>
     </div>
   `;
 }
