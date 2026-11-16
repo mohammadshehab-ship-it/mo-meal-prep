@@ -1,0 +1,18 @@
+{
+  "name": "Mo's Meal Prep & Macro Studio",
+  "short_name": "Mo Meal Prep",
+  "description": "Mo's Personalized Intermittent Fasting Meal Prep, AI Chef & Smart Grocery Sync",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#0f172a",
+  "theme_color": "#10b981",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "https://cdn-icons-png.flaticon.com/512/1046/1046784.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
