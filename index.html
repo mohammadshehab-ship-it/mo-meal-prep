@@ -51,16 +51,23 @@
 </head>
 <body class="min-h-screen pb-28 transition-colors duration-200 selection:bg-emerald-500 selection:text-white">
 
+  <!-- ================= AUTH & FAMILY ONBOARDING OVERLAY ================= -->
+  <div id="authOverlay" class="fixed inset-0 z-50 hidden bg-slate-50 dark:bg-[#0b0f17] overflow-y-auto flex items-center justify-center p-4">
+    <div id="authContainer" class="w-full max-w-lg my-auto">
+      <!-- Populated dynamically by JS: Sign In OR 4-Step Interactive Family Onboarding -->
+    </div>
+  </div>
+
   <!-- Sleek Minimalist Sticky Header -->
   <header class="sticky top-0 z-30 bg-white/85 dark:bg-[#0b0f17]/85 backdrop-blur-xl border-b border-slate-100 dark:border-slate-800/80 px-4 py-3">
     <div class="max-w-xl mx-auto flex items-center justify-between gap-2">
       <div class="flex items-center gap-3">
-        <div class="w-9 h-9 rounded-2xl bg-emerald-600 text-white flex items-center justify-center font-extrabold text-sm shadow-md shadow-emerald-600/20">
+        <div id="headerAvatarIcon" class="w-9 h-9 rounded-2xl bg-emerald-600 text-white flex items-center justify-center font-extrabold text-sm shadow-md shadow-emerald-600/20">
           M
         </div>
         <div>
           <div class="flex items-center gap-2">
-            <h1 class="text-base font-extrabold tracking-tight">Mo Meal Prep</h1>
+            <h1 id="headerAppTitle" class="text-base font-extrabold tracking-tight">Mo Meal Prep</h1>
             <button onclick="switchTab('profile')" id="headerTargetBadge" class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-500/30">
               1,800 kcal
             </button>
@@ -70,9 +77,9 @@
       </div>
 
       <div class="flex items-center gap-1.5">
-        <button onclick="switchTab('profile')" id="syncStatusBtn" class="inline-flex items-center gap-1.5 text-[11px] font-semibold px-2.5 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800/90 text-slate-600 dark:text-slate-300">
+        <button onclick="openUserAccountModal()" id="syncStatusBtn" class="inline-flex items-center gap-1.5 text-[11px] font-semibold px-2.5 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800/90 text-slate-700 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700 transition" title="Account, Tour & Sync Status">
           <span id="syncDot" class="w-2 h-2 rounded-full bg-emerald-500"></span>
-          <span id="syncText" class="hidden sm:inline">Synced</span>
+          <span id="syncText">👤 Mo</span>
         </button>
         <button onclick="openCalendarModal()" class="px-2.5 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800/90 hover:bg-slate-200 dark:hover:bg-slate-700 text-xs font-semibold transition" title="Switch Week or View Archive">
           📅 Weeks
@@ -329,12 +336,17 @@
       <div class="soft-card rounded-3xl p-5 space-y-4">
         <div class="flex items-center justify-between">
           <div>
-            <h2 class="text-base font-bold">Mo's Body Profile & Goal</h2>
-            <p class="text-xs text-slate-400">5'7" • Age 42 • Dietitian Verified Plan</p>
+            <h2 id="profileHeadingTitle" class="text-base font-bold">Mo's Body Profile & Goal</h2>
+            <p id="profileSubheadingMeta" class="text-xs text-slate-400">5'7" • Age 42 • Custom Nutrition Plan</p>
           </div>
-          <span id="profileAutoSaveBadge" class="text-[11px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-500/10 px-3 py-1 rounded-full">
-            ✓ Saved
-          </span>
+          <div class="flex items-center gap-1.5">
+            <button onclick="openAppTourModal()" class="text-[11px] font-semibold px-2.5 py-1 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
+              🎬 App Tour
+            </button>
+            <button onclick="openUserAccountModal()" class="text-[11px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-500/10 px-3 py-1 rounded-full">
+              Switch User
+            </button>
+          </div>
         </div>
 
         <!-- Clean 3-Box Stat Highlights -->
@@ -347,7 +359,7 @@
           <div class="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/40">
             <div class="text-[10px] font-semibold uppercase text-slate-400">Muscle Mass</div>
             <div class="text-base sm:text-lg font-extrabold mt-0.5"><span id="dispCurrMuscle">75</span> lbs</div>
-            <div class="text-[11px] text-purple-500 font-semibold">130.9 lb LBM</div>
+            <div id="dispCurrLbm" class="text-[11px] text-purple-500 font-semibold">130.9 lb LBM</div>
           </div>
           <div class="p-3 rounded-2xl bg-emerald-50/70 dark:bg-emerald-500/10 border border-emerald-500/20">
             <div class="text-[10px] font-semibold uppercase text-emerald-600 dark:text-emerald-400">Target Goal</div>
@@ -358,13 +370,13 @@
 
         <!-- Primary Action: Open Full 4-Step Clinical Formula Audit -->
         <button onclick="generateScientificMacroRecommendation()" class="w-full py-3.5 rounded-2xl bg-slate-900 dark:bg-emerald-500 text-white dark:text-slate-950 text-xs font-bold shadow-md transition flex items-center justify-center gap-2">
-          <span>🔬</span> View Full Clinical Formula Audit & Dietitian Review
+          <span>🔬</span> View Full Clinical Formula Audit & Macro Review
         </button>
 
         <!-- Scientific Macro Recommendation & Formula Report Output -->
         <div id="aiAdvisorRecommendationCard" class="hidden bg-slate-50 dark:bg-slate-950/90 border border-emerald-500/40 rounded-2xl p-4 space-y-3.5"></div>
 
-        <!-- Collapsible Edit Body Stats & Goal Drawer (Keeps main profile super clean!) -->
+        <!-- Collapsible Edit Body Stats & Goal Drawer -->
         <details class="group pt-2 border-t border-slate-100 dark:border-slate-800/80">
           <summary class="cursor-pointer py-2 text-xs font-bold text-slate-600 dark:text-slate-300 flex items-center justify-between select-none">
             <span>✏️ Update Current Weight, Body Fat %, Goal or Activity</span>
@@ -492,7 +504,7 @@
             <p class="text-[11px] text-slate-400">Dictates all generated meals & portion sizes</p>
           </div>
           <button onclick="resetDefaultMacros()" class="text-[11px] text-slate-400 hover:text-emerald-500 underline">
-            Reset to 1,800
+            Reset to Baseline
           </button>
         </div>
 
@@ -524,7 +536,7 @@
         </button>
       </div>
 
-      <!-- Card 3: Food Preferences, Firebase Status & Gemini Key (Clean Accordion) -->
+      <!-- Card 3: Food Preferences, Firebase Status & Gemini Key -->
       <details class="soft-card rounded-3xl p-5 group">
         <summary class="cursor-pointer text-sm font-bold flex items-center justify-between select-none">
           <span>⚙️ Food Exclusions, Firebase & Gemini Key</span>
@@ -532,7 +544,6 @@
         </summary>
 
         <div class="pt-4 space-y-4 text-xs">
-          <!-- Avoid List -->
           <div class="space-y-2">
             <label class="font-bold text-rose-500 block">🚫 Strict Exclude / Avoid List</label>
             <div class="flex gap-2">
@@ -542,7 +553,6 @@
             <div id="exclusionTags" class="flex flex-wrap gap-1.5 pt-1"></div>
           </div>
 
-          <!-- Boost List -->
           <div class="space-y-2 pt-2 border-t border-slate-100 dark:border-slate-800">
             <label class="font-bold text-emerald-600 dark:text-emerald-400 block">💚 Favorite Ingredients to Boost</label>
             <div class="flex gap-2">
@@ -552,7 +562,6 @@
             <div id="favIngTags" class="flex flex-wrap gap-1.5 pt-1"></div>
           </div>
 
-          <!-- Gemini API Key & Firebase Status -->
           <div class="space-y-2 pt-2 border-t border-slate-100 dark:border-slate-800">
             <div class="flex items-center justify-between">
               <label class="font-bold">🤖 Gemini API Key <a href="https://aistudio.google.com/app/apikey" target="_blank" class="text-emerald-500 underline ml-1 font-normal">(Get key ↗)</a></label>
@@ -580,14 +589,13 @@
 
   </main>
 
-  <!-- SLIDE-UP RECIPE DETAIL DRAWER (Never collapses on iPhone Safari!) -->
+  <!-- SLIDE-UP RECIPE DETAIL DRAWER -->
   <div id="recipeDrawerModal" onclick="if(event.target === this) closeRecipeDrawer()" class="fixed inset-0 z-50 hidden bg-slate-950/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4">
     <div id="recipeDrawerContent" class="bg-white dark:bg-[#131b2e] w-full max-w-lg rounded-t-3xl sm:rounded-3xl p-6 space-y-4 max-h-[88vh] overflow-y-auto shadow-2xl border-t sm:border border-slate-200/80 dark:border-slate-800">
-      <!-- Populated dynamically when user taps any meal card -->
     </div>
   </div>
 
-  <!-- General App Modal (Swap Meal, Calendar Archive, Week Refresh) -->
+  <!-- General App Modal (Swap Meal, Calendar Archive, Week Refresh, App Tour, User Switcher) -->
   <div id="appModal" onclick="if(event.target === this) closeModal()" class="fixed inset-0 z-50 hidden bg-slate-950/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4">
     <div id="appModalContent" class="bg-white dark:bg-[#131b2e] border-t sm:border border-slate-200 dark:border-slate-800 rounded-t-3xl sm:rounded-3xl max-w-lg w-full p-6 shadow-2xl space-y-4 max-h-[85vh] overflow-y-auto">
     </div>

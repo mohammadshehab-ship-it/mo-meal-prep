@@ -1,6 +1,20 @@
 // Mo Meal Prep — Sleek Modern UI, Slide-Up Recipe Sheet, Calendar Archive, Movie Treat Finder & Firebase Live Sync
-const STORAGE_KEY = 'mo_meal_prep_state_v4';
-const FIREBASE_DB_URL = 'https://mo-meal-prep-default-rtdb.firebaseio.com/mo_meal_prep_state.json';
+const STORAGE_KEY_PREFIX = 'mo_meal_prep_user_';
+const ACTIVE_USER_SESSION_KEY = 'mo_meal_prep_active_session_v1';
+const FIREBASE_BASE_URL = 'https://mo-meal-prep-default-rtdb.firebaseio.com';
+
+// Current signed-in user session: { username: 'mo', displayName: 'Mo', pin: '7369' }
+let currentSession = null;
+
+function getStorageKey() {
+  const u = (currentSession?.username || 'mo').toLowerCase().replace(/[^a-z0-9]/g, '');
+  return `${STORAGE_KEY_PREFIX}${u}_v4`;
+}
+
+function getFirebaseUserUrl(usernameOverride = null) {
+  const u = (usernameOverride || currentSession?.username || 'mo').toLowerCase().replace(/[^a-z0-9]/g, '');
+  return `${FIREBASE_BASE_URL}/users/${u}.json`;
+}
 
 function getMondayOfDate(d = new Date()) {
   const date = new Date(d.getFullYear(), d.getMonth(), d.getDate());
@@ -87,8 +101,11 @@ const currentMondayISO = getMondayOfDate(new Date());
 
 let state = {
   theme: 'light',
+  authPin: '7369',
+  displayName: 'Mo',
   profile: {
     ...JSON.parse(JSON.stringify(window.DEFAULT_PROFILE)),
+    sex: 'male',
     startWeight: 170,
     currentWeight: 170,
     goalWeight: 160,
@@ -115,29 +132,86 @@ let state = {
   lastUpdated: Date.now()
 };
 
+function getFreshDefaultStateForMo() {
+  return {
+    theme: state.theme || 'light',
+    authPin: '7369',
+    displayName: 'Mo',
+    profile: {
+      ...JSON.parse(JSON.stringify(window.DEFAULT_PROFILE)),
+      sex: 'male',
+      startWeight: 170,
+      currentWeight: 170,
+      goalWeight: 160,
+      goalBodyFatPct: 18.2,
+      heightFt: 5,
+      heightIn: 7,
+      age: 42,
+      bodyFatPct: 23,
+      muscleMassLbs: 75,
+      waistIn: '',
+      activityMultiplier: 1.375,
+      workoutsPerWeek: 3,
+      goalType: 'cut_moderate'
+    },
+    activeWeekMondayISO: currentMondayISO,
+    selectedDayIndex: 0,
+    weeksByStartISO: {},
+    progressLogs: [
+      {
+        id: 'baseline-170-v4',
+        dateISO: formatDateISO(new Date()),
+        weight: 170,
+        bodyFatPct: 23,
+        muscleMassLbs: 75,
+        note: 'Baseline Profile (5\'7", Age 42, 170 lbs, 23% BF, 75 lbs Muscle → Goal: 160 lbs / 18.2% BF)'
+      }
+    ],
+    favorites: [],
+    mealHistoryLog: [],
+    checkedGroceries: {},
+    customGroceries: [],
+    selectedStoreFilter: 'ALL',
+    lastUpdated: Date.now()
+  };
+}
+
 // Track currently open recipe drawer so background sync never closes it
 let activeOpenDrawerContext = null;
 
 document.addEventListener('DOMContentLoaded', async () => {
+  registerServiceWorker();
+  const savedSess = localStorage.getItem(ACTIVE_USER_SESSION_KEY);
+  if (savedSess) {
+    try {
+      currentSession = JSON.parse(savedSess);
+    } catch (e) {}
+  }
+
+  if (!currentSession || !currentSession.username) {
+    // Show Sign-In / Family Onboarding Screen
+    openAuthOverlay('signin');
+    return;
+  }
+
+  await initializeAuthenticatedApp();
+});
+
+async function initializeAuthenticatedApp() {
+  const overlay = document.getElementById('authOverlay');
+  if (overlay) overlay.classList.add('hidden');
   loadState();
   applyThemeMode();
   ensureWeekExists(state.activeWeekMondayISO);
-  registerServiceWorker();
   renderAll();
   await pullFromCloudRoom(true);
   startAutoCloudSyncPolling();
-});
-
-function registerServiceWorker() {
-  if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('./sw.js').catch(() => {});
-  }
 }
 
 function toggleThemeMode() {
   state.theme = state.theme === 'dark' ? 'light' : 'dark';
   applyThemeMode();
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  localStorage.setItem(getStorageKey(), JSON.stringify(state));
 }
 
 function applyThemeMode() {
@@ -154,27 +228,26 @@ function applyThemeMode() {
 
 function loadState() {
   try {
-    const savedV4 = localStorage.getItem(STORAGE_KEY);
-    if (savedV4) {
-      const parsed = JSON.parse(savedV4);
+    const key = getStorageKey();
+    const savedUser = localStorage.getItem(key);
+    // Also check legacy mo_meal_prep_state_v4 if signing in as Mo for the first time
+    const legacyMo = currentSession?.username === 'mo' ? localStorage.getItem('mo_meal_prep_state_v4') : null;
+    const rawToLoad = savedUser || legacyMo;
+
+    if (rawToLoad) {
+      const parsed = JSON.parse(rawToLoad);
       state = {
         ...state,
         ...parsed,
         profile: { ...state.profile, ...(parsed.profile || {}) }
       };
+    } else if (currentSession?.username === 'mo') {
+      state = getFreshDefaultStateForMo();
     }
 
-    if (!state.progressLogs || state.progressLogs.length === 0) {
-      state.progressLogs = [
-        {
-          id: 'baseline-170-v4',
-          dateISO: formatDateISO(new Date()),
-          weight: 170,
-          bodyFatPct: 23,
-          muscleMassLbs: 75,
-          note: 'Baseline Profile (5\'7", Age 42, 170 lbs, 23% BF, 75 lbs Muscle → Goal: 160 lbs / 18.2% BF)'
-        }
-      ];
+    if (currentSession?.username === 'mo') {
+      state.authPin = '7369';
+      state.displayName = 'Mo';
     }
   } catch (e) {
     console.error('Error loading state:', e);
@@ -183,8 +256,8 @@ function loadState() {
 
 function saveState(skipCloud = false) {
   state.lastUpdated = Date.now();
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-  if (!skipCloud) {
+  localStorage.setItem(getStorageKey(), JSON.stringify(state));
+  if (!skipCloud && currentSession?.username) {
     pushToCloudRoom(true);
   }
 }
@@ -299,6 +372,19 @@ function renderAll() {
 
 function renderHeaderBadge() {
   const p = state.profile;
+  const displayName = state.displayName || currentSession?.displayName || 'Mo';
+  const titleEl = document.getElementById('headerAppTitle');
+  const avatarEl = document.getElementById('headerAvatarIcon');
+  const syncTxt = document.getElementById('syncText');
+  const profTitle = document.getElementById('profileHeadingTitle');
+  const profSub = document.getElementById('profileSubheadingMeta');
+
+  if (titleEl) titleEl.textContent = displayName.toLowerCase() === 'mo' ? 'Mo Meal Prep' : `${displayName}'s Meal Prep`;
+  if (avatarEl) avatarEl.textContent = displayName.charAt(0).toUpperCase();
+  if (syncTxt) syncTxt.textContent = `👤 ${displayName}`;
+  if (profTitle) profTitle.textContent = `${displayName}'s Body Profile & Goal`;
+  if (profSub) profSub.textContent = `${p.heightFt || 5}'${p.heightIn ?? 7}" • Age ${p.age || 42} • Personalized Plan`;
+
   const badge = document.getElementById('headerTargetBadge');
   if (badge) {
     badge.textContent = `${p.calories.toLocaleString()} kcal`;
@@ -1931,7 +2017,8 @@ function computeScientificMacros(p = state.profile) {
   const leanMassKg = leanMassLbs * 0.45359237;
 
   const bmrKatch = Math.round(370 + (21.6 * leanMassKg));
-  const bmrMifflin = Math.round((10 * weightKg) + (6.25 * heightCm) - (5 * age) + 5);
+  const sexOffset = p.sex === 'female' ? -161 : 5;
+  const bmrMifflin = Math.round((10 * weightKg) + (6.25 * heightCm) - (5 * age) + sexOffset);
   const bmrAvg = Math.round((bmrKatch + bmrMifflin) / 2);
 
   const workoutThermicBonus = workouts >= 4 ? 60 : workouts >= 2 ? 25 : 0;
@@ -2169,6 +2256,8 @@ function updateSyncBadge(status = 'connected') {
   const detail = document.getElementById('syncStatusDetail');
   if (!dot || !txt) return;
 
+  const displayName = state.displayName || currentSession?.displayName || 'Mo';
+
   if (status === 'locked') {
     dot.className = 'w-2 h-2 rounded-full bg-amber-400 animate-pulse';
     txt.textContent = 'Unlock DB';
@@ -2177,9 +2266,9 @@ function updateSyncBadge(status = 'connected') {
     }
   } else {
     dot.className = 'w-2 h-2 rounded-full bg-emerald-500';
-    txt.textContent = 'Synced';
+    txt.textContent = `👤 ${displayName}`;
     if (detail) {
-      detail.innerHTML = `✓ <span class="text-emerald-600 dark:text-emerald-400">Connected to Google Firebase Realtime Database — all devices sync automatically!</span>`;
+      detail.innerHTML = `✓ <span class="text-emerald-600 dark:text-emerald-400">Signed in as <strong>${displayName}</strong> — Synced to Google Firebase (<code>/users/${(currentSession?.username || 'mo')}</code>)</span>`;
     }
   }
 }
@@ -2192,6 +2281,8 @@ function saveApiAndSyncSettings() {
 
 function getCloudSyncPayload() {
   return {
+    authPin: state.authPin || currentSession?.pin || '7369',
+    displayName: state.displayName || currentSession?.displayName || 'Mo',
     profile: {
       ...state.profile,
       geminiApiKey: undefined
@@ -2208,12 +2299,14 @@ function getCloudSyncPayload() {
 }
 
 let _isPushingFirebase = false;
+let _activeEventSource = null;
 
 async function pushToCloudRoom(silent = true) {
+  if (!currentSession?.username) return;
   try {
     _isPushingFirebase = true;
     const payload = getCloudSyncPayload();
-    const resp = await fetch(FIREBASE_DB_URL, {
+    const resp = await fetch(getFirebaseUserUrl(), {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
@@ -2232,14 +2325,14 @@ async function pushToCloudRoom(silent = true) {
   }
 }
 
-// SMART DIFF: Only re-render if remote timestamp is strictly newer than local state!
-// This guarantees iPhone Safari NEVER collapses or interrupts what you or your wife are reading!
 function applyRemoteFirebaseState(remote) {
   if (!remote || !remote.profile) return;
   if (state.lastUpdated && remote.lastUpdated && remote.lastUpdated <= state.lastUpdated) {
-    return; // No new changes from other devices — do NOT re-render DOM!
+    return;
   }
   const localKey = state.profile.geminiApiKey;
+  if (remote.displayName) state.displayName = remote.displayName;
+  if (remote.authPin) state.authPin = remote.authPin;
   state.profile = { ...state.profile, ...remote.profile, geminiApiKey: localKey };
   if (remote.weeksByStartISO) state.weeksByStartISO = { ...state.weeksByStartISO, ...remote.weeksByStartISO };
   if (remote.progressLogs) state.progressLogs = remote.progressLogs;
@@ -2248,20 +2341,33 @@ function applyRemoteFirebaseState(remote) {
   state.checkedGroceries = remote.checkedGroceries || {};
   state.customGroceries = remote.customGroceries || [];
   state.lastUpdated = remote.lastUpdated || Date.now();
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  localStorage.setItem(getStorageKey(), JSON.stringify(state));
   renderAll();
 }
 
 async function pullFromCloudRoom(silent = true) {
+  if (!currentSession?.username) return;
   try {
-    const resp = await fetch(FIREBASE_DB_URL);
+    const resp = await fetch(getFirebaseUserUrl());
     if (resp.status === 401 || resp.status === 403) {
       updateSyncBadge('locked');
       return;
     }
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
     updateSyncBadge('connected');
-    const remote = await resp.json();
+    let remote = await resp.json();
+
+    // If signing in as 'mo' and /users/mo is empty, check legacy root /mo_meal_prep_state.json
+    if (!remote && currentSession.username === 'mo') {
+      const legacyResp = await fetch(`${FIREBASE_BASE_URL}/mo_meal_prep_state.json`).catch(() => null);
+      if (legacyResp && legacyResp.ok) {
+        const legacyData = await legacyResp.json();
+        if (legacyData && legacyData.profile) {
+          remote = { ...legacyData, authPin: '7369', displayName: 'Mo' };
+        }
+      }
+    }
+
     if (!remote) {
       await pushToCloudRoom(true);
       return;
@@ -2272,11 +2378,18 @@ async function pullFromCloudRoom(silent = true) {
   }
 }
 
+let _syncIntervalId = null;
+
 function startAutoCloudSyncPolling() {
+  if (_activeEventSource) {
+    try { _activeEventSource.close(); } catch (e) {}
+  }
+  if (_syncIntervalId) clearInterval(_syncIntervalId);
+
   try {
-    if (window.EventSource) {
-      const es = new EventSource(FIREBASE_DB_URL);
-      es.addEventListener('put', (e) => {
+    if (window.EventSource && currentSession?.username) {
+      _activeEventSource = new EventSource(getFirebaseUserUrl());
+      _activeEventSource.addEventListener('put', (e) => {
         if (_isPushingFirebase) return;
         try {
           const packet = JSON.parse(e.data);
@@ -2289,11 +2402,735 @@ function startAutoCloudSyncPolling() {
     }
   } catch (e) {}
 
-  setInterval(() => {
-    if (!_isPushingFirebase) {
+  _syncIntervalId = setInterval(() => {
+    if (!_isPushingFirebase && currentSession?.username) {
       pullFromCloudRoom(true);
     }
   }, 6000);
+}
+
+// ================= MULTI-USER SIGN IN, ACCOUNT SWITCHER & INTERACTIVE FAMILY ONBOARDING =================
+let onboardingDraft = {
+  step: 1,
+  tourSlide: 0,
+  displayName: '',
+  username: '',
+  pin: '',
+  sex: 'male',
+  age: 34,
+  heightFt: 5,
+  heightIn: 8,
+  currentWeight: 175,
+  goalWeight: 160,
+  bodyFatPct: 22,
+  goalBodyFatPct: 16.5,
+  muscleMassLbs: 72,
+  activityMultiplier: 1.375,
+  workoutsPerWeek: 3,
+  goalType: 'cut_moderate'
+};
+
+const APP_TOUR_SLIDES = [
+  {
+    badge: "Part 1 of 4 • Welcome",
+    icon: "🥗",
+    title: "Your Personal AI Nutritionist & Chef",
+    desc: "Unlike generic calorie counters that leave you guessing what to cook, this app builds a complete, delicious 7-day intermittent fasting meal plan tailored 100% to your body's exact calorie and macro needs.",
+    bullets: [
+      "Every day hits your exact Calorie, Protein, Carb, Fat & Fiber targets automatically.",
+      "Protected personal profiles—your meal plan, weight log, and favorites belong only to you."
+    ],
+    speech: "Welcome to Meal Prep Studio! This app acts as your personal nutritionist and chef. Instead of guessing what to eat, it builds a complete 7-day meal plan customized 100 percent to your body and your goals."
+  },
+  {
+    badge: "Part 2 of 4 • Why Your Stats Matter",
+    icon: "🔬",
+    title: "Backed by Clinical Sports Science",
+    desc: "In the next step, we will ask for your height, weight, age, activity level, and optional body fat percentage. Why? Because the app uses two peer-reviewed clinical equations (Katch-McArdle & Mifflin-St Jeor) to calculate:",
+    bullets: [
+      "Your Resting Metabolism (BMR) & True Daily Calorie Burn (TDEE).",
+      "Your Lean Body Mass—setting your Protein target (~1g per lb of lean mass) so you lose pure fat while protecting 100% of your muscle!"
+    ],
+    speech: "In the next step, we will ask for your basic body metrics and activity level. We use clinical equations to calculate your true metabolism and set your protein target so you burn pure fat while protecting 100 percent of your muscle."
+  },
+  {
+    badge: "Part 3 of 4 • Daily Meals & Movie Treats",
+    icon: "🍿",
+    title: "Never Eat Boring Diet Food Again",
+    desc: "Your daily plan follows an easy 2-Meal + 2-Snack structure (a lighter first meal, a hearty dinner, and 2 high-protein snacks) with automatic protein rotation so you never eat the same protein two days in a row.",
+    bullets: [
+      "Tap any meal card for exact 1-person ingredients, step-by-step Air Fryer/skillet instructions, and direct cooking videos.",
+      "Craving something while watching a movie? Use the Cravings tab for guilt-free homemade or store-bought treats!"
+    ],
+    speech: "Your daily plan gives you two delicious meals and two snacks, rotating proteins every day so you never get bored. Tap any meal for step-by-step instructions and cooking videos, or use the Movie Treat finder whenever a craving hits!"
+  },
+  {
+    badge: "Part 4 of 4 • Smart Local Grocery Sync",
+    icon: "🛒",
+    title: "Automatic Local Shopping List",
+    desc: "Every ingredient from your 7-day meal plan is automatically combined into an interactive checklist and routed to the best local stores (Joe Randazzo's for produce, Greenland/Papaya for Halal meats, Costco, and Walmart/Meijer).",
+    bullets: [
+      "Swap any meal in your 7-day plan and your shopping list updates itself immediately.",
+      "Ready to build your custom profile? Tap Next below to get started in 60 seconds!"
+    ],
+    speech: "Finally, your entire week of meals automatically turns into a smart grocery checklist sorted by store. Let's build your personal profile now in under 60 seconds!"
+  }
+];
+
+function speakTourSlide(text) {
+  try {
+    if ('speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+      const utter = new SpeechSynthesisUtterance(text);
+      utter.rate = 1.02;
+      window.speechSynthesis.speak(utter);
+    } else {
+      showToast('Voice narration not supported on this browser.');
+    }
+  } catch (e) {}
+}
+
+function stopTourSpeech() {
+  try {
+    if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+  } catch (e) {}
+}
+
+function openAuthOverlay(mode = 'signin') {
+  stopTourSpeech();
+  const overlay = document.getElementById('authOverlay');
+  const container = document.getElementById('authContainer');
+  if (!overlay || !container) return;
+  overlay.classList.remove('hidden');
+
+  if (mode === 'signin') {
+    container.innerHTML = `
+      <div class="soft-card rounded-3xl p-6 sm:p-8 space-y-6">
+        <div class="text-center space-y-2">
+          <div class="w-12 h-12 rounded-2xl bg-emerald-600 text-white flex items-center justify-center font-extrabold text-xl mx-auto shadow-lg shadow-emerald-600/25">
+            🥗
+          </div>
+          <h1 class="text-xl font-extrabold tracking-tight">Welcome to Meal Prep Studio</h1>
+          <p class="text-xs text-slate-400 max-w-sm mx-auto">
+            Sign in with your Name & 4-Digit PIN to load your personal meal plan, or start our guided onboarding to create your own custom profile!
+          </p>
+        </div>
+
+        <div class="space-y-3.5">
+          <div>
+            <label class="block text-xs font-bold text-slate-500 dark:text-slate-300 mb-1">Your First Name / Username</label>
+            <input id="loginUsername" type="text" placeholder="e.g., Mo" class="w-full soft-input rounded-2xl px-4 py-3 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+          </div>
+          <div>
+            <label class="block text-xs font-bold text-slate-500 dark:text-slate-300 mb-1">4-Digit Security PIN</label>
+            <input id="loginPin" type="password" inputmode="numeric" maxlength="6" placeholder="••••" onkeydown="if(event.key==='Enter') handleUserSignIn()" class="w-full soft-input rounded-2xl px-4 py-3 text-sm font-extrabold tracking-widest focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+          </div>
+          <div id="loginErrorMsg" class="hidden text-xs text-rose-500 font-semibold text-center bg-rose-500/10 py-2 px-3 rounded-xl"></div>
+
+          <button onclick="handleUserSignIn()" id="btnSignInSubmit" class="w-full py-3.5 rounded-2xl bg-slate-900 dark:bg-emerald-500 text-white dark:text-slate-950 font-extrabold text-xs shadow-lg transition">
+            🔓 Sign In to My Profile
+          </button>
+        </div>
+
+        <div class="pt-4 border-t border-slate-100 dark:border-slate-800 text-center space-y-3">
+          <p class="text-xs text-slate-400">New family member? Create your own isolated profile & custom meal plan:</p>
+          <button onclick="startFamilyOnboarding()" class="w-full py-3 rounded-2xl bg-emerald-50 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-500/30 font-extrabold text-xs hover:bg-emerald-100 transition">
+            ✨ New Here? Start Guided Profile Onboarding & App Tour
+          </button>
+        </div>
+      </div>
+    `;
+  } else {
+    renderOnboardingStep();
+  }
+}
+
+async function handleUserSignIn() {
+  const rawName = (document.getElementById('loginUsername')?.value || '').trim();
+  const pin = (document.getElementById('loginPin')?.value || '').trim();
+  const errBox = document.getElementById('loginErrorMsg');
+  const btn = document.getElementById('btnSignInSubmit');
+
+  if (!rawName || !pin) {
+    errBox.textContent = 'Please enter both your Name and your 4-digit PIN.';
+    errBox.classList.remove('hidden');
+    return;
+  }
+
+  const cleanUser = rawName.toLowerCase().replace(/[^a-z0-9]/g, '');
+
+  // Special protection for Mo & Wife's account: username 'mo' requires PIN '7369'
+  if (cleanUser === 'mo') {
+    if (pin !== '7369') {
+      errBox.textContent = '🔒 Incorrect PIN for Mo\'s profile. (Family members: click "Start Guided Profile Onboarding" below to create your own profile!)';
+      errBox.classList.remove('hidden');
+      return;
+    }
+    currentSession = { username: 'mo', displayName: 'Mo', pin: '7369' };
+    localStorage.setItem(ACTIVE_USER_SESSION_KEY, JSON.stringify(currentSession));
+    await initializeAuthenticatedApp();
+    showToast('👋 Welcome back, Mo!');
+    return;
+  }
+
+  // Check Firebase or local storage for existing family member account
+  btn.disabled = true;
+  btn.textContent = '⏳ Checking Profile...';
+
+  try {
+    let remoteData = null;
+    try {
+      const resp = await fetch(getFirebaseUserUrl(cleanUser));
+      if (resp.ok) remoteData = await resp.json();
+    } catch (e) {}
+
+    const localSaved = localStorage.getItem(`${STORAGE_KEY_PREFIX}${cleanUser}_v4`);
+    const localData = localSaved ? JSON.parse(localSaved) : null;
+    const existingAccount = remoteData || localData;
+
+    if (!existingAccount || !existingAccount.profile) {
+      errBox.textContent = `No profile found for "${rawName}" yet. Click "Start Guided Profile Onboarding" below to build your profile in 60 seconds!`;
+      errBox.classList.remove('hidden');
+      btn.disabled = false;
+      btn.textContent = '🔓 Sign In to My Profile';
+      return;
+    }
+
+    if (String(existingAccount.authPin || '') !== pin) {
+      errBox.textContent = `🔒 Incorrect PIN for ${existingAccount.displayName || rawName}.`;
+      errBox.classList.remove('hidden');
+      btn.disabled = false;
+      btn.textContent = '🔓 Sign In to My Profile';
+      return;
+    }
+
+    currentSession = {
+      username: cleanUser,
+      displayName: existingAccount.displayName || rawName,
+      pin
+    };
+    localStorage.setItem(ACTIVE_USER_SESSION_KEY, JSON.stringify(currentSession));
+    state = { ...state, ...existingAccount };
+    localStorage.setItem(getStorageKey(), JSON.stringify(state));
+    await initializeAuthenticatedApp();
+    showToast(`👋 Welcome back, ${currentSession.displayName}!`);
+  } catch (err) {
+    errBox.textContent = 'Could not sign in — please try again.';
+    errBox.classList.remove('hidden');
+    btn.disabled = false;
+    btn.textContent = '🔓 Sign In to My Profile';
+  }
+}
+
+function startFamilyOnboarding() {
+  onboardingDraft = {
+    step: 1,
+    tourSlide: 0,
+    displayName: '',
+    username: '',
+    pin: '',
+    sex: 'male',
+    age: 34,
+    heightFt: 5,
+    heightIn: 8,
+    currentWeight: 175,
+    goalWeight: 160,
+    bodyFatPct: 22,
+    goalBodyFatPct: 16.5,
+    muscleMassLbs: 72,
+    activityMultiplier: 1.375,
+    workoutsPerWeek: 3,
+    goalType: 'cut_moderate'
+  };
+  renderOnboardingStep();
+}
+
+function renderOnboardingStep() {
+  stopTourSpeech();
+  const container = document.getElementById('authContainer');
+  if (!container) return;
+
+  const s = onboardingDraft.step;
+
+  // STEP 1: INTERACTIVE VISUAL & AUDIO APP TOUR
+  if (s === 1) {
+    const slide = APP_TOUR_SLIDES[onboardingDraft.tourSlide] || APP_TOUR_SLIDES[0];
+    const totalSlides = APP_TOUR_SLIDES.length;
+    const idx = onboardingDraft.tourSlide;
+
+    container.innerHTML = `
+      <div class="soft-card rounded-3xl p-6 sm:p-7 space-y-5">
+        <div class="flex items-center justify-between">
+          <span class="text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full bg-emerald-50 dark:bg-emerald-500/15 text-emerald-600 dark:text-emerald-400">
+            🎬 Interactive App Guide (${idx + 1} of ${totalSlides})
+          </span>
+          <button onclick="openAuthOverlay('signin')" class="text-xs text-slate-400 hover:text-slate-600 font-semibold">
+            Back to Sign In ✕
+          </button>
+        </div>
+
+        <!-- Visual Animated Presentation Card -->
+        <div class="p-5 rounded-3xl bg-gradient-to-br from-slate-900 to-slate-800 text-white space-y-3 shadow-xl">
+          <div class="flex items-center justify-between">
+            <span class="text-3xl">${slide.icon}</span>
+            <button onclick="speakTourSlide('${slide.speech.replace(/'/g, "\\'")}')" class="px-3 py-1.5 rounded-full bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 text-[11px] font-bold flex items-center gap-1.5 transition">
+              <span>🔊</span> Listen to Audio Guide
+            </button>
+          </div>
+          <div class="text-[11px] font-bold uppercase tracking-wider text-emerald-400">${slide.badge}</div>
+          <h2 class="text-lg font-extrabold leading-snug">${slide.title}</h2>
+          <p class="text-xs text-slate-300 leading-relaxed">${slide.desc}</p>
+          <ul class="space-y-1.5 pt-2 border-t border-slate-700/80 text-xs text-emerald-200">
+            ${slide.bullets.map(b => `<li class="flex items-start gap-2"><span>✓</span><span>${b}</span></li>`).join('')}
+          </ul>
+        </div>
+
+        <!-- Slide Progress Dots -->
+        <div class="flex items-center justify-center gap-2">
+          ${APP_TOUR_SLIDES.map((_, i) => `
+            <button onclick="onboardingDraft.tourSlide=${i}; renderOnboardingStep();" class="h-2 rounded-full transition-all ${
+              i === idx ? 'w-6 bg-emerald-500' : 'w-2 bg-slate-200 dark:bg-slate-700'
+            }"></button>
+          `).join('')}
+        </div>
+
+        <!-- Navigation Buttons -->
+        <div class="flex items-center justify-between gap-3 pt-1">
+          ${idx > 0 ? `
+            <button onclick="onboardingDraft.tourSlide--; renderOnboardingStep();" class="px-4 py-3 rounded-2xl bg-slate-100 dark:bg-slate-800 text-xs font-bold">
+              ◀ Back
+            </button>
+          ` : `
+            <button onclick="onboardingDraft.step=2; renderOnboardingStep();" class="px-4 py-3 rounded-2xl text-slate-400 hover:text-slate-600 text-xs font-semibold">
+              Skip Tour
+            </button>
+          `}
+
+          ${idx < totalSlides - 1 ? `
+            <button onclick="onboardingDraft.tourSlide++; renderOnboardingStep();" class="flex-1 py-3 rounded-2xl bg-slate-900 dark:bg-emerald-500 text-white dark:text-slate-950 text-xs font-extrabold shadow-md">
+              Next Slide (${idx + 2}/${totalSlides}) ▶
+            </button>
+          ` : `
+            <button onclick="onboardingDraft.step=2; renderOnboardingStep();" class="flex-1 py-3.5 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-extrabold shadow-lg">
+              🚀 Start Building My Profile (Step 1 of 3) ▶
+            </button>
+          `}
+        </div>
+      </div>
+    `;
+    return;
+  }
+
+  // STEP 2: ACCOUNT NAME & 4-DIGIT PIN
+  if (s === 2) {
+    container.innerHTML = `
+      <div class="soft-card rounded-3xl p-6 sm:p-7 space-y-5">
+        <div class="flex items-center justify-between">
+          <span class="text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full bg-emerald-50 dark:bg-emerald-500/15 text-emerald-600 dark:text-emerald-400">
+            Step 1 of 3 • Create Your Account
+          </span>
+          <button onclick="onboardingDraft.step=1; renderOnboardingStep();" class="text-xs text-slate-400 font-semibold">◀ Back to Tour</button>
+        </div>
+
+        <div>
+          <h2 class="text-lg font-extrabold">Let's Create Your Personal Space</h2>
+          <p class="text-xs text-slate-400 mt-1">
+            Your profile, weight history, and weekly meal plan will be saved in your own private cloud folder so you never overwrite anyone else's plan.
+          </p>
+        </div>
+
+        <div class="space-y-3.5 text-xs">
+          <div>
+            <label class="block font-bold text-slate-600 dark:text-slate-300 mb-1">1. Your First Name (Used for signing in)</label>
+            <input id="obName" type="text" value="${onboardingDraft.displayName}" placeholder="e.g., Ahmad, Sara, Nora..." class="w-full soft-input rounded-2xl px-4 py-3 text-sm font-bold" />
+          </div>
+
+          <div>
+            <label class="block font-bold text-slate-600 dark:text-slate-300 mb-1">2. Choose a 4-Digit Security PIN</label>
+            <input id="obPin" type="password" inputmode="numeric" maxlength="6" value="${onboardingDraft.pin}" placeholder="e.g., 1234" class="w-full soft-input rounded-2xl px-4 py-3 text-sm font-extrabold tracking-widest" />
+            <p class="text-[11px] text-slate-400 mt-1">You'll use your First Name + this PIN whenever you open the app on a new device.</p>
+          </div>
+
+          <div id="obStep2Err" class="hidden text-xs text-rose-500 font-semibold bg-rose-500/10 p-2.5 rounded-xl"></div>
+        </div>
+
+        <button onclick="submitOnboardingStep2()" class="w-full py-3.5 rounded-2xl bg-slate-900 dark:bg-emerald-500 text-white dark:text-slate-950 font-extrabold text-xs shadow-md">
+          Continue to Body Metrics (Step 2 of 3) ▶
+        </button>
+      </div>
+    `;
+    return;
+  }
+
+  // STEP 3: BODY METRICS & WHY WE NEED THEM
+  if (s === 3) {
+    container.innerHTML = `
+      <div class="soft-card rounded-3xl p-6 sm:p-7 space-y-4">
+        <div class="flex items-center justify-between">
+          <span class="text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full bg-emerald-50 dark:bg-emerald-500/15 text-emerald-600 dark:text-emerald-400">
+            Step 2 of 3 • Body Metrics & Metabolism
+          </span>
+          <button onclick="onboardingDraft.step=2; renderOnboardingStep();" class="text-xs text-slate-400 font-semibold">◀ Back</button>
+        </div>
+
+        <div>
+          <h2 class="text-lg font-extrabold">Tell Us About Your Body, ${onboardingDraft.displayName}</h2>
+          <p class="text-xs text-slate-400 mt-0.5">
+            Why do we ask for these? Every calorie and gram of protein in your meal plan is calculated from your resting metabolic rate (BMR) and lean muscle mass.
+          </p>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3 text-xs">
+          <div>
+            <label class="block font-bold mb-1">Biological Sex</label>
+            <select id="obSex" class="w-full soft-input rounded-xl px-3 py-2.5 font-semibold">
+              <option value="male" ${onboardingDraft.sex === 'male' ? 'selected' : ''}>Male (+5 BMR constant)</option>
+              <option value="female" ${onboardingDraft.sex === 'female' ? 'selected' : ''}>Female (-161 BMR constant)</option>
+            </select>
+          </div>
+          <div>
+            <label class="block font-bold mb-1">Age (Years)</label>
+            <input id="obAge" type="number" value="${onboardingDraft.age}" class="w-full soft-input rounded-xl px-3 py-2.5 font-bold" />
+          </div>
+
+          <div>
+            <label class="block font-bold mb-1">Height (Feet & Inches)</label>
+            <div class="flex gap-1.5">
+              <input id="obHeightFt" type="number" value="${onboardingDraft.heightFt}" placeholder="5 ft" class="w-1/2 soft-input rounded-xl px-2.5 py-2.5 font-bold" />
+              <input id="obHeightIn" type="number" value="${onboardingDraft.heightIn}" placeholder="8 in" class="w-1/2 soft-input rounded-xl px-2.5 py-2.5 font-bold" />
+            </div>
+          </div>
+
+          <div>
+            <label class="block font-bold text-emerald-600 dark:text-emerald-400 mb-1">Current Weight (lbs)</label>
+            <input id="obWeight" type="number" step="0.1" value="${onboardingDraft.currentWeight}" class="w-full soft-input rounded-xl px-3 py-2.5 font-extrabold" />
+          </div>
+
+          <div>
+            <label class="block font-bold text-amber-600 dark:text-amber-400 mb-1">Est. Body Fat % (If known)</label>
+            <input id="obBf" type="number" step="0.1" value="${onboardingDraft.bodyFatPct}" placeholder="e.g. 22%" class="w-full soft-input rounded-xl px-3 py-2.5 font-bold" />
+            <span class="text-[10px] text-slate-400">Typical: Men 15–25%, Women 22–32%</span>
+          </div>
+
+          <div>
+            <label class="block font-bold text-purple-500 mb-1">Muscle Mass (lbs, Opt)</label>
+            <input id="obMuscle" type="number" step="0.1" value="${onboardingDraft.muscleMassLbs}" placeholder="Optional" class="w-full soft-input rounded-xl px-3 py-2.5 font-bold" />
+            <span class="text-[10px] text-slate-400">Auto-estimated if left as-is</span>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs pt-1">
+          <div>
+            <label class="block font-bold mb-1">Daily Lifestyle Activity</label>
+            <select id="obActivity" class="w-full soft-input rounded-xl px-3 py-2.5">
+              <option value="1.2">Sedentary (Desk job)</option>
+              <option value="1.375" selected>Lightly Active (Daily movement)</option>
+              <option value="1.55">Moderately Active (On feet daily)</option>
+              <option value="1.725">Very Active (Hard physical training)</option>
+            </select>
+          </div>
+          <div>
+            <label class="block font-bold mb-1">Workouts per Week</label>
+            <select id="obWorkouts" class="w-full soft-input rounded-xl px-3 py-2.5">
+              <option value="0">0–1 days / week</option>
+              <option value="3" selected>2–3 days / week</option>
+              <option value="4">4–5 days / week</option>
+              <option value="6">6+ days / week</option>
+            </select>
+          </div>
+        </div>
+
+        <button onclick="submitOnboardingStep3()" class="w-full py-3.5 rounded-2xl bg-slate-900 dark:bg-emerald-500 text-white dark:text-slate-950 font-extrabold text-xs shadow-md">
+          Continue to Goal & Macro Calculation (Step 3 of 3) ▶
+        </button>
+      </div>
+    `;
+    return;
+  }
+
+  // STEP 4: GOAL SELECTION & SCIENTIFIC MACRO REVEAL
+  if (s === 4) {
+    const sci = computeScientificMacros(onboardingDraft);
+    container.innerHTML = `
+      <div class="soft-card rounded-3xl p-6 sm:p-7 space-y-4">
+        <div class="flex items-center justify-between">
+          <span class="text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full bg-emerald-50 dark:bg-emerald-500/15 text-emerald-600 dark:text-emerald-400">
+            Step 3 of 3 • Your Custom Nutrition Blueprint
+          </span>
+          <button onclick="onboardingDraft.step=3; renderOnboardingStep();" class="text-xs text-slate-400 font-semibold">◀ Back</button>
+        </div>
+
+        <div>
+          <h2 class="text-lg font-extrabold">Your Scientific Plan is Ready, ${onboardingDraft.displayName}!</h2>
+          <p class="text-xs text-slate-400 mt-0.5">
+            Adjust your Target Goal Weight or Strategy below and watch your personalized daily calories and macros update live:
+          </p>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+          <div>
+            <label class="block font-bold text-emerald-600 dark:text-emerald-400 mb-1">Target Goal Weight (lbs)</label>
+            <input id="obGoalWeight" type="number" step="0.1" value="${onboardingDraft.goalWeight}" onchange="onboardingDraft.goalWeight=parseFloat(this.value)||160; renderOnboardingStep();" class="w-full soft-input rounded-xl px-3 py-2.5 font-extrabold" />
+          </div>
+          <div>
+            <label class="block font-bold mb-1">Goal Strategy & Pace</label>
+            <select id="obGoalType" onchange="onboardingDraft.goalType=this.value; renderOnboardingStep();" class="w-full soft-input rounded-xl px-3 py-2.5 font-semibold">
+              <option value="cut_moderate" ${onboardingDraft.goalType === 'cut_moderate' ? 'selected' : ''}>Steady Fat Loss (~1 lb/wk)</option>
+              <option value="cut_aggressive" ${onboardingDraft.goalType === 'cut_aggressive' ? 'selected' : ''}>Aggressive Cut (~1.4 lbs/wk)</option>
+              <option value="recomp" ${onboardingDraft.goalType === 'recomp' ? 'selected' : ''}>Body Recomposition (-300 kcal)</option>
+              <option value="maintain" ${onboardingDraft.goalType === 'maintain' ? 'selected' : ''}>Maintain Weight & Energy</option>
+              <option value="lean_bulk" ${onboardingDraft.goalType === 'lean_bulk' ? 'selected' : ''}>Lean Muscle Gain (+250 kcal)</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Revealed Scientific Blueprint -->
+        <div class="p-4 rounded-2xl bg-slate-50 dark:bg-slate-900 border border-emerald-500/30 space-y-3 text-xs">
+          <div class="flex items-center justify-between">
+            <span class="font-bold text-emerald-600 dark:text-emerald-400">🔬 Your Clinical Metabolic Numbers</span>
+            <span class="text-[11px] font-semibold text-slate-400">Maintenance TDEE: ${sci.tdee.toLocaleString()} kcal</span>
+          </div>
+
+          <div class="grid grid-cols-5 gap-2 text-center">
+            <div class="p-2 rounded-xl soft-card">
+              <div class="text-[10px] text-slate-400">Calories</div>
+              <div class="text-sm font-extrabold">${sci.calories}</div>
+            </div>
+            <div class="p-2 rounded-xl soft-card">
+              <div class="text-[10px] text-slate-400">Protein</div>
+              <div class="text-sm font-extrabold text-emerald-600 dark:text-emerald-400">${sci.protein}g</div>
+            </div>
+            <div class="p-2 rounded-xl soft-card">
+              <div class="text-[10px] text-slate-400">Carbs</div>
+              <div class="text-sm font-extrabold text-sky-500">${sci.carbs}g</div>
+            </div>
+            <div class="p-2 rounded-xl soft-card">
+              <div class="text-[10px] text-slate-400">Fat</div>
+              <div class="text-sm font-extrabold text-amber-500">${sci.fat}g</div>
+            </div>
+            <div class="p-2 rounded-xl soft-card">
+              <div class="text-[10px] text-slate-400">Fiber</div>
+              <div class="text-sm font-extrabold text-purple-500">${sci.fiber}g</div>
+            </div>
+          </div>
+
+          <p class="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
+            Every day of your 7-day meal plan will now be automatically portioned to hit <strong>${sci.calories.toLocaleString()} kcal</strong> and <strong>${sci.protein}g of protein</strong> to protect your lean mass (${sci.leanMassLbs} lbs)!
+          </p>
+        </div>
+
+        <button onclick="completeFamilyOnboarding()" class="w-full py-4 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-xs shadow-lg transition">
+          🚀 Launch My Custom 7-Day Meal Plan!
+        </button>
+      </div>
+    `;
+  }
+}
+
+async function submitOnboardingStep2() {
+  const rawName = (document.getElementById('obName')?.value || '').trim();
+  const pin = (document.getElementById('obPin')?.value || '').trim();
+  const errEl = document.getElementById('obStep2Err');
+
+  if (!rawName || rawName.length < 2) {
+    errEl.textContent = 'Please enter your First Name (at least 2 characters).';
+    errEl.classList.remove('hidden');
+    return;
+  }
+  if (!pin || pin.length < 4) {
+    errEl.textContent = 'Please choose a 4-digit PIN so your profile stays private.';
+    errEl.classList.remove('hidden');
+    return;
+  }
+
+  const cleanUser = rawName.toLowerCase().replace(/[^a-z0-9]/g, '');
+  if (cleanUser === 'mo') {
+    errEl.textContent = 'The username "Mo" is reserved for Mo\'s profile! Please use your own name (or sign in on the previous screen if you are Mo).';
+    errEl.classList.remove('hidden');
+    return;
+  }
+
+  onboardingDraft.displayName = rawName;
+  onboardingDraft.username = cleanUser;
+  onboardingDraft.pin = pin;
+  onboardingDraft.step = 3;
+  renderOnboardingStep();
+}
+
+function submitOnboardingStep3() {
+  onboardingDraft.sex = document.getElementById('obSex').value;
+  onboardingDraft.age = parseInt(document.getElementById('obAge').value, 10) || 34;
+  onboardingDraft.heightFt = parseInt(document.getElementById('obHeightFt').value, 10) || 5;
+  onboardingDraft.heightIn = parseInt(document.getElementById('obHeightIn').value, 10) || 8;
+  onboardingDraft.currentWeight = parseFloat(document.getElementById('obWeight').value) || 175;
+  onboardingDraft.bodyFatPct = parseFloat(document.getElementById('obBf').value) || (onboardingDraft.sex === 'female' ? 28 : 22);
+  const estLbm = onboardingDraft.currentWeight * (1 - onboardingDraft.bodyFatPct / 100);
+  onboardingDraft.muscleMassLbs = parseFloat(document.getElementById('obMuscle').value) || Math.round(estLbm * 0.57);
+  onboardingDraft.activityMultiplier = parseFloat(document.getElementById('obActivity').value) || 1.375;
+  onboardingDraft.workoutsPerWeek = parseInt(document.getElementById('obWorkouts').value, 10) || 3;
+  onboardingDraft.goalWeight = Math.max(105, Math.round(onboardingDraft.currentWeight - 12));
+  onboardingDraft.step = 4;
+  renderOnboardingStep();
+}
+
+async function completeFamilyOnboarding() {
+  const sci = computeScientificMacros(onboardingDraft);
+  const goalW = parseFloat(document.getElementById('obGoalWeight')?.value) || onboardingDraft.goalWeight;
+  const goalType = document.getElementById('obGoalType')?.value || onboardingDraft.goalType;
+  const leanLbs = onboardingDraft.currentWeight * (1 - onboardingDraft.bodyFatPct / 100);
+  const goalBf = Math.max(10, +(((goalW - leanLbs) / goalW) * 100).toFixed(1));
+
+  currentSession = {
+    username: onboardingDraft.username,
+    displayName: onboardingDraft.displayName,
+    pin: onboardingDraft.pin
+  };
+  localStorage.setItem(ACTIVE_USER_SESSION_KEY, JSON.stringify(currentSession));
+
+  state = {
+    theme: state.theme || 'light',
+    authPin: onboardingDraft.pin,
+    displayName: onboardingDraft.displayName,
+    profile: {
+      ...JSON.parse(JSON.stringify(window.DEFAULT_PROFILE)),
+      calories: sci.calories,
+      protein: sci.protein,
+      carbs: sci.carbs,
+      fat: sci.fat,
+      fiber: sci.fiber,
+      sex: onboardingDraft.sex,
+      startWeight: onboardingDraft.currentWeight,
+      currentWeight: onboardingDraft.currentWeight,
+      goalWeight: goalW,
+      goalBodyFatPct: goalBf,
+      heightFt: onboardingDraft.heightFt,
+      heightIn: onboardingDraft.heightIn,
+      age: onboardingDraft.age,
+      bodyFatPct: onboardingDraft.bodyFatPct,
+      muscleMassLbs: onboardingDraft.muscleMassLbs,
+      waistIn: '',
+      activityMultiplier: onboardingDraft.activityMultiplier,
+      workoutsPerWeek: onboardingDraft.workoutsPerWeek,
+      goalType
+    },
+    activeWeekMondayISO: currentMondayISO,
+    selectedDayIndex: 0,
+    weeksByStartISO: {},
+    progressLogs: [
+      {
+        id: 'onboard-' + Date.now(),
+        dateISO: formatDateISO(new Date()),
+        weight: onboardingDraft.currentWeight,
+        bodyFatPct: onboardingDraft.bodyFatPct,
+        muscleMassLbs: onboardingDraft.muscleMassLbs,
+        note: `Onboarding Baseline (${onboardingDraft.currentWeight} lbs → Goal: ${goalW} lbs)`
+      }
+    ],
+    favorites: [],
+    mealHistoryLog: [],
+    checkedGroceries: {},
+    customGroceries: [],
+    selectedStoreFilter: 'ALL',
+    lastUpdated: Date.now()
+  };
+
+  ensureWeekExists(state.activeWeekMondayISO, true, 'mix');
+  saveState(false);
+  await initializeAuthenticatedApp();
+  showToast(`🎉 Welcome, ${onboardingDraft.displayName}! Your ${sci.calories} kcal plan is ready.`);
+}
+
+function openUserAccountModal() {
+  const modal = document.getElementById('appModal');
+  const content = document.getElementById('appModalContent');
+  const name = state.displayName || currentSession?.displayName || 'Mo';
+  const uname = currentSession?.username || 'mo';
+
+  content.innerHTML = `
+    <div class="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+      <div>
+        <h3 class="text-base font-extrabold">👤 Signed In as ${name}</h3>
+        <p class="text-xs text-slate-400">Private Cloud Profile: <code>/users/${uname}</code></p>
+      </div>
+      <button onclick="closeModal()" class="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-500 font-bold">✕</button>
+    </div>
+
+    <div class="space-y-3 text-xs">
+      <div class="p-3.5 rounded-2xl bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-500/20 text-emerald-700 dark:text-emerald-300">
+        ✓ Your profile, weight check-ins, and weekly meal plans are isolated inside <strong>${name}'s</strong> account and protected by your 4-digit PIN.
+      </div>
+
+      <button onclick="closeModal(); openAppTourModal();" class="w-full py-3 rounded-2xl bg-slate-100 dark:bg-slate-800 font-bold flex items-center justify-center gap-2">
+        <span>🎬</span> Watch Interactive App Tour & How-To Guide
+      </button>
+
+      <button onclick="signOutCurrentUser()" class="w-full py-3 rounded-2xl bg-rose-500/10 text-rose-600 dark:text-rose-400 font-bold">
+        🔒 Sign Out / Switch Family Member
+      </button>
+    </div>
+  `;
+  modal.classList.remove('hidden');
+}
+
+function openAppTourModal() {
+  onboardingDraft.step = 1;
+  onboardingDraft.tourSlide = 0;
+  const modal = document.getElementById('appModal');
+  const content = document.getElementById('appModalContent');
+  renderTourInsideModal(content);
+  modal.classList.remove('hidden');
+}
+
+function renderTourInsideModal(contentEl) {
+  stopTourSpeech();
+  const slide = APP_TOUR_SLIDES[onboardingDraft.tourSlide] || APP_TOUR_SLIDES[0];
+  const totalSlides = APP_TOUR_SLIDES.length;
+  const idx = onboardingDraft.tourSlide;
+
+  contentEl.innerHTML = `
+    <div class="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+      <span class="text-xs font-extrabold text-emerald-600 dark:text-emerald-400">🎬 App Tour (${idx + 1}/${totalSlides})</span>
+      <button onclick="stopTourSpeech(); closeModal();" class="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-500 font-bold">✕</button>
+    </div>
+
+    <div class="p-5 rounded-3xl bg-slate-900 text-white space-y-3">
+      <div class="flex items-center justify-between">
+        <span class="text-3xl">${slide.icon}</span>
+        <button onclick="speakTourSlide('${slide.speech.replace(/'/g, "\\'")}')" class="px-3 py-1.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 text-[11px] font-bold">
+          🔊 Listen to Audio Guide
+        </button>
+      </div>
+      <div class="text-[11px] font-bold uppercase text-emerald-400">${slide.badge}</div>
+      <h3 class="text-base font-extrabold">${slide.title}</h3>
+      <p class="text-xs text-slate-300 leading-relaxed">${slide.desc}</p>
+      <ul class="space-y-1.5 pt-2 border-t border-slate-800 text-xs text-emerald-200">
+        ${slide.bullets.map(b => `<li>✓ ${b}</li>`).join('')}
+      </ul>
+    </div>
+
+    <div class="flex items-center justify-between gap-2 pt-1">
+      <button onclick="if(onboardingDraft.tourSlide>0){onboardingDraft.tourSlide--; renderTourInsideModal(document.getElementById('appModalContent'));}" class="px-4 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-xs font-bold ${idx === 0 ? 'opacity-40 cursor-not-allowed' : ''}">
+        ◀ Prev
+      </button>
+      ${idx < totalSlides - 1 ? `
+        <button onclick="onboardingDraft.tourSlide++; renderTourInsideModal(document.getElementById('appModalContent'));" class="flex-1 py-2.5 rounded-xl bg-slate-900 dark:bg-emerald-500 text-white dark:text-slate-950 text-xs font-bold">
+          Next Slide ▶
+        </button>
+      ` : `
+        <button onclick="stopTourSpeech(); closeModal();" class="flex-1 py-2.5 rounded-xl bg-emerald-600 text-white text-xs font-bold">
+          ✓ Got It!
+        </button>
+      `}
+    </div>
+  `;
+}
+
+function signOutCurrentUser() {
+  stopTourSpeech();
+  closeModal();
+  currentSession = null;
+  localStorage.removeItem(ACTIVE_USER_SESSION_KEY);
+  openAuthOverlay('signin');
 }
 
 function exportBackupJson() {
