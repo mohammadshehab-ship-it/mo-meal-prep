@@ -2522,10 +2522,60 @@ const APP_TOUR_SLIDES = [
 // Exact chapter timestamps (seconds) in intro-video.mp4
 const VIDEO_CHAPTERS = [
   { label: '1. Why Different', time: 0.0 },
-  { label: '2. Body Science', time: 20.9 },
-  { label: '3. Daily Meals', time: 39.4 },
-  { label: '4. Store Sync', time: 58.3 }
+  { label: '2. Body Science', time: 17.4 },
+  { label: '3. Daily Variety', time: 33.4 },
+  { label: '4. Store Sync', time: 50.8 }
 ];
+
+const PUBLIC_APP_URL = 'https://mohammadshehab-ship-it.github.io/mo-meal-prep/';
+const PUBLIC_VIDEO_URL = 'https://mohammadshehab-ship-it.github.io/mo-meal-prep/intro-video.mp4';
+
+async function shareAppAndVideoToFamily() {
+  const shareText = `🥗 Hey family! Check out our Meal Prep & Macro Studio app!\n\n🎬 Watch the 1-minute intro video & build your own custom 7-day meal plan (click "New Here? Start Guided Profile Onboarding"):\n👉 ${PUBLIC_APP_URL}\n\n📹 Direct Intro Video Link:\n${PUBLIC_VIDEO_URL}`;
+
+  // Try native mobile share sheet (with MP4 file attachment if supported, otherwise text + link)
+  if (navigator.share) {
+    try {
+      const resp = await fetch('./intro-video.mp4').catch(() => null);
+      if (resp && resp.ok && navigator.canShare) {
+        const blob = await resp.blob();
+        const file = new File([blob], 'Meal-Prep-Studio-Intro.mp4', { type: 'video/mp4' });
+        if (navigator.canShare({ files: [file] })) {
+          await navigator.share({
+            title: 'Meal Prep & Macro Studio',
+            text: shareText,
+            files: [file]
+          });
+          return;
+        }
+      }
+      await navigator.share({
+        title: 'Meal Prep & Macro Studio',
+        text: shareText,
+        url: PUBLIC_APP_URL
+      });
+      return;
+    } catch (e) {}
+  }
+
+  // Fallback: copy invitation message + app & video links to clipboard
+  try {
+    await navigator.clipboard.writeText(shareText);
+    showToast('📋 Family invite message + App & Video links copied! Paste into WhatsApp or iMessage.');
+  } catch (e) {
+    showToast('Copy link: ' + PUBLIC_APP_URL);
+  }
+}
+
+function downloadIntroVideoMp4() {
+  const a = document.createElement('a');
+  a.href = './intro-video.mp4';
+  a.download = 'Meal-Prep-Studio-Intro.mp4';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  showToast('⬇️ Downloading Intro Video (.mp4)...');
+}
 
 function seekIntroVideo(sec) {
   const vid = document.getElementById('introVideoPlayerEl');
@@ -2554,7 +2604,7 @@ function buildInfographicVideoPlayerHTML() {
       <div class="relative rounded-2xl overflow-hidden bg-black border border-slate-800/80 aspect-video">
         <video
           id="introVideoPlayerEl"
-          src="./intro-video.mp4"
+          src="./intro-video.mp4?v=2"
           controls
           playsinline
           preload="auto"
@@ -2566,7 +2616,7 @@ function buildInfographicVideoPlayerHTML() {
       <div class="space-y-1.5">
         <div class="flex items-center justify-between text-[10px] text-slate-400 px-1">
           <span class="font-bold text-emerald-400 uppercase tracking-wider">🎬 Jump to Video Chapter:</span>
-          <span>HD 720p • Studio Human Voiceover</span>
+          <span>HD 720p • Studio Voice + Music</span>
         </div>
         <div class="grid grid-cols-4 gap-1.5 text-[10px] text-center">
           ${VIDEO_CHAPTERS.map((ch) => `
@@ -2575,6 +2625,16 @@ function buildInfographicVideoPlayerHTML() {
             </button>
           `).join('')}
         </div>
+      </div>
+
+      <!-- Share Video & App Link to Family Bar -->
+      <div class="flex items-center gap-2 pt-1.5 border-t border-slate-800/80">
+        <button onclick="shareAppAndVideoToFamily()" class="flex-1 py-2.5 px-3 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 text-xs font-bold flex items-center justify-center gap-1.5 transition">
+          <span>📤</span> Share Video & App Link to Family
+        </button>
+        <button onclick="downloadIntroVideoMp4()" class="py-2.5 px-3 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800 text-xs font-semibold shrink-0 transition" title="Download MP4 Video File">
+          ⬇️ MP4
+        </button>
       </div>
     </div>
   `;
@@ -2616,10 +2676,13 @@ function openAuthOverlay(mode = 'signin') {
           </button>
         </div>
 
-        <div class="pt-4 border-t border-slate-100 dark:border-slate-800 text-center space-y-3">
-          <p class="text-xs text-slate-400">New family member? Create your own isolated profile & custom meal plan:</p>
+        <div class="pt-4 border-t border-slate-100 dark:border-slate-800 text-center space-y-2.5">
+          <p class="text-xs text-slate-400">New family member? Watch the 1-min video & create your own isolated profile:</p>
           <button onclick="startFamilyOnboarding()" class="w-full py-3 rounded-2xl bg-emerald-50 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-500/30 font-extrabold text-xs hover:bg-emerald-100 transition">
-            ✨ New Here? Start Guided Profile Onboarding & App Tour
+            ✨ New Here? Watch Intro Video & Start Guided Onboarding
+          </button>
+          <button onclick="shareAppAndVideoToFamily()" class="w-full py-2.5 rounded-2xl bg-slate-100 dark:bg-slate-800/80 text-slate-600 dark:text-slate-300 font-bold text-xs hover:bg-slate-200 transition">
+            📤 Share Intro Video & App Link to Family
           </button>
         </div>
       </div>
@@ -3100,7 +3163,11 @@ function openUserAccountModal() {
       </div>
 
       <button onclick="closeModal(); openAppTourModal();" class="w-full py-3 rounded-2xl bg-slate-100 dark:bg-slate-800 font-bold flex items-center justify-center gap-2">
-        <span>🎬</span> Watch Interactive App Tour & How-To Guide
+        <span>🎬</span> Watch Intro Video & App Guide
+      </button>
+
+      <button onclick="shareAppAndVideoToFamily()" class="w-full py-3 rounded-2xl bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 font-bold flex items-center justify-center gap-2">
+        <span>📤</span> Share Video & App Link to Family
       </button>
 
       <button onclick="signOutCurrentUser()" class="w-full py-3 rounded-2xl bg-rose-500/10 text-rose-600 dark:text-rose-400 font-bold">
