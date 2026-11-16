@@ -373,13 +373,15 @@ function renderAll() {
 function renderHeaderBadge() {
   const p = state.profile;
   const displayName = state.displayName || currentSession?.displayName || 'Mo';
+  const appTitleText = `${displayName}'s Meal Prep`;
   const titleEl = document.getElementById('headerAppTitle');
   const avatarEl = document.getElementById('headerAvatarIcon');
   const syncTxt = document.getElementById('syncText');
   const profTitle = document.getElementById('profileHeadingTitle');
   const profSub = document.getElementById('profileSubheadingMeta');
 
-  if (titleEl) titleEl.textContent = displayName.toLowerCase() === 'mo' ? 'Mo Meal Prep' : `${displayName}'s Meal Prep`;
+  document.title = appTitleText;
+  if (titleEl) titleEl.textContent = appTitleText;
   if (avatarEl) avatarEl.textContent = displayName.charAt(0).toUpperCase();
   if (syncTxt) syncTxt.textContent = `👤 ${displayName}`;
   if (profTitle) profTitle.textContent = `${displayName}'s Body Profile & Goal`;
@@ -2432,50 +2434,201 @@ let onboardingDraft = {
 
 const APP_TOUR_SLIDES = [
   {
-    badge: "Part 1 of 4 • Welcome",
-    icon: "🥗",
-    title: "Your Personal AI Nutritionist & Chef",
-    desc: "Unlike generic calorie counters that leave you guessing what to cook, this app builds a complete, delicious 7-day intermittent fasting meal plan tailored 100% to your body's exact calorie and macro needs.",
-    bullets: [
-      "Every day hits your exact Calorie, Protein, Carb, Fat & Fiber targets automatically.",
-      "Protected personal profiles—your meal plan, weight log, and favorites belong only to you."
-    ],
-    speech: "Welcome to Meal Prep Studio! This app acts as your personal nutritionist and chef. Instead of guessing what to eat, it builds a complete 7-day meal plan customized 100 percent to your body and your goals."
+    badge: "Scene 1 of 4 • Why This App Is Different",
+    durationSec: 11,
+    title: "Proactive AI Chef vs. Traditional Calorie Trackers",
+    desc: "Most apps make you weigh and log food AFTER you eat—leaving you frustrated when your macros don't match. We flip that upside down:",
+    infographicHTML: `
+      <div class="grid grid-cols-2 gap-2.5 pt-1 text-left">
+        <div class="p-3 rounded-2xl bg-rose-500/10 border border-rose-500/30 space-y-1.5 anim-float anim-delay-1">
+          <div class="text-[10px] font-extrabold uppercase text-rose-400">❌ Most Diet Apps</div>
+          <div class="text-[11px] text-slate-300">• Manual barcode scanning after every bite</div>
+          <div class="text-[11px] text-slate-300">• Generic 1-size-fits-all calorie guesses</div>
+          <div class="text-[11px] text-slate-300">• Zero help deciding what to cook tonight</div>
+        </div>
+        <div class="p-3 rounded-2xl bg-emerald-500/15 border border-emerald-500/40 space-y-1.5 anim-float anim-delay-2 anim-glow">
+          <div class="text-[10px] font-extrabold uppercase text-emerald-300">✅ Meal Prep Studio</div>
+          <div class="text-[11px] text-white font-medium">• Pre-built 7-day plan hitting 100% of your macros</div>
+          <div class="text-[11px] text-white font-medium">• Clinical Lean-Mass metabolism engine</div>
+          <div class="text-[11px] text-white font-medium">• Step-by-step recipes + local store routing</div>
+        </div>
+      </div>
+    `,
+    speech: "Why is this app different from traditional calorie trackers? Most apps make you log food after you eat, leaving you guessing what to cook. Meal Prep Studio does the math first, building a complete 7-day plan where every single day already hits 100 percent of your calorie and macro goals."
   },
   {
-    badge: "Part 2 of 4 • Why Your Stats Matter",
-    icon: "🔬",
-    title: "Backed by Clinical Sports Science",
-    desc: "In the next step, we will ask for your height, weight, age, activity level, and optional body fat percentage. Why? Because the app uses two peer-reviewed clinical equations (Katch-McArdle & Mifflin-St Jeor) to calculate:",
-    bullets: [
-      "Your Resting Metabolism (BMR) & True Daily Calorie Burn (TDEE).",
-      "Your Lean Body Mass—setting your Protein target (~1g per lb of lean mass) so you lose pure fat while protecting 100% of your muscle!"
-    ],
-    speech: "In the next step, we will ask for your basic body metrics and activity level. We use clinical equations to calculate your true metabolism and set your protein target so you burn pure fat while protecting 100 percent of your muscle."
+    badge: "Scene 2 of 4 • Clinical Body-Composition Science",
+    durationSec: 11,
+    title: "Lose Pure Fat While Protecting 100% of Your Muscle",
+    desc: "Why do we ask for your height, weight, age, and body fat %? Because scale weight alone lies—we calculate your exact Lean Body Mass:",
+    infographicHTML: `
+      <div class="p-3.5 rounded-2xl bg-slate-950/80 border border-slate-800 space-y-2.5 anim-float anim-delay-1">
+        <div class="flex items-center justify-between text-[11px]">
+          <span class="text-sky-400 font-bold">🔬 Dual-Formula BMR (Katch-McArdle + Mifflin)</span>
+          <span class="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-bold text-[10px]">100% Verified Math</span>
+        </div>
+        <div class="space-y-1.5 text-[11px]">
+          <div>
+            <div class="flex justify-between mb-0.5"><span class="text-slate-400">Muscle Protection (~1.05g Protein / lb Lean Mass)</span><span class="text-emerald-400 font-bold">100% Preserved</span></div>
+            <div class="h-2 bg-slate-800 rounded-full overflow-hidden"><div class="h-full bg-emerald-500 anim-bar" style="width:100%"></div></div>
+          </div>
+          <div>
+            <div class="flex justify-between mb-0.5"><span class="text-slate-400">Targeted Daily Caloric Deficit (-500 kcal/day)</span><span class="text-amber-400 font-bold">~1.0 lb Pure Fat/Wk</span></div>
+            <div class="h-2 bg-slate-800 rounded-full overflow-hidden"><div class="h-full bg-amber-500 anim-bar" style="width:82%"></div></div>
+          </div>
+        </div>
+      </div>
+    `,
+    speech: "In the next step, we ask for your body metrics so we can run the clinical Katch-McArdle and Mifflin-St Jeor equations. This sets your protein target based on your Lean Body Mass so you burn pure fat while protecting 100 percent of your muscle."
   },
   {
-    badge: "Part 3 of 4 • Daily Meals & Movie Treats",
-    icon: "🍿",
-    title: "Never Eat Boring Diet Food Again",
-    desc: "Your daily plan follows an easy 2-Meal + 2-Snack structure (a lighter first meal, a hearty dinner, and 2 high-protein snacks) with automatic protein rotation so you never eat the same protein two days in a row.",
-    bullets: [
-      "Tap any meal card for exact 1-person ingredients, step-by-step Air Fryer/skillet instructions, and direct cooking videos.",
-      "Craving something while watching a movie? Use the Cravings tab for guilt-free homemade or store-bought treats!"
-    ],
-    speech: "Your daily plan gives you two delicious meals and two snacks, rotating proteins every day so you never get bored. Tap any meal for step-by-step instructions and cooking videos, or use the Movie Treat finder whenever a craving hits!"
+    badge: "Scene 3 of 4 • Daily Protein Rotation & Movie Treats",
+    durationSec: 11,
+    title: "2 Meals + 2 Snacks • Zero Diet Boredom",
+    desc: "Built for Intermittent Fasting: a lighter first meal, a hearty dinner, and 2 snacks—rotating proteins daily so you never eat the same protein twice in a row:",
+    infographicHTML: `
+      <div class="space-y-2 pt-1">
+        <div class="grid grid-cols-4 gap-1.5 text-center anim-float anim-delay-1">
+          <div class="p-2 rounded-xl bg-slate-950/80 border border-slate-800"><div class="text-base">🍗</div><div class="text-[10px] font-bold text-emerald-400">Mon: Chicken</div></div>
+          <div class="p-2 rounded-xl bg-slate-950/80 border border-slate-800"><div class="text-base">🍤</div><div class="text-[10px] font-bold text-sky-400">Tue: Shrimp</div></div>
+          <div class="p-2 rounded-xl bg-slate-950/80 border border-slate-800"><div class="text-base">🥩</div><div class="text-[10px] font-bold text-amber-400">Wed: Beef</div></div>
+          <div class="p-2 rounded-xl bg-slate-950/80 border border-slate-800"><div class="text-base">🐟</div><div class="text-[10px] font-bold text-purple-400">Thu: Tilapia</div></div>
+        </div>
+        <div class="p-2.5 rounded-xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-between text-[11px] anim-float anim-delay-2">
+          <span>🍿 <strong>Watching a movie?</strong> Built-in Sweet & Savory Treat Finder!</span>
+          <span class="font-bold text-amber-300 shrink-0">Home or Store</span>
+        </div>
+      </div>
+    `,
+    speech: "Your daily schedule features a lighter first meal, a hearty dinner, and two snacks, automatically rotating Chicken, Shrimp, Halal Beef, and Tilapia so you never eat the same protein two days in a row. Plus, use the Movie Treat finder anytime a craving hits!"
   },
   {
-    badge: "Part 4 of 4 • Smart Local Grocery Sync",
-    icon: "🛒",
-    title: "Automatic Local Shopping List",
-    desc: "Every ingredient from your 7-day meal plan is automatically combined into an interactive checklist and routed to the best local stores (Joe Randazzo's for produce, Greenland/Papaya for Halal meats, Costco, and Walmart/Meijer).",
-    bullets: [
-      "Swap any meal in your 7-day plan and your shopping list updates itself immediately.",
-      "Ready to build your custom profile? Tap Next below to get started in 60 seconds!"
-    ],
-    speech: "Finally, your entire week of meals automatically turns into a smart grocery checklist sorted by store. Let's build your personal profile now in under 60 seconds!"
+    badge: "Scene 4 of 4 • Smart Local Grocery Sync",
+    durationSec: 10,
+    title: "Auto-Routed to the Cheapest Local Stores",
+    desc: "Your entire week of recipes automatically turns into a live checklist sorted by the best local store for every single item:",
+    infographicHTML: `
+      <div class="grid grid-cols-2 gap-2 pt-1 text-left text-[11px] anim-float anim-delay-1">
+        <div class="p-2.5 rounded-xl bg-slate-950/80 border border-emerald-500/30"><span class="font-bold text-emerald-400">🥬 Joe Randazzo's</span><div class="text-[10px] text-slate-400">Fresh produce, fruits & herbs</div></div>
+        <div class="p-2.5 rounded-xl bg-slate-950/80 border border-amber-500/30"><span class="font-bold text-amber-400">🥩 Greenland / Papaya</span><div class="text-[10px] text-slate-400">Halal meats, labneh, pita & spices</div></div>
+        <div class="p-2.5 rounded-xl bg-slate-950/80 border border-sky-500/30"><span class="font-bold text-sky-400">📦 Costco / Sam's</span><div class="text-[10px] text-slate-400">Bulk shrimp, tilapia, yogurt & eggs</div></div>
+        <div class="p-2.5 rounded-xl bg-slate-950/80 border border-purple-500/30"><span class="font-bold text-purple-400">🛒 Walmart / Meijer</span><div class="text-[10px] text-slate-400">Everyday pantry & low-carb wraps</div></div>
+      </div>
+    `,
+    speech: "Every ingredient from your weekly plan is automatically organized by local store so you save time and money. Ready to see your custom calorie and macro blueprint? Click Start Building My Profile below!"
   }
 ];
+
+let _tourAutoPlayTimer = null;
+let _tourPlaying = false;
+let _tourVoiceEnabled = false;
+
+function toggleInfographicVideoPlay(inModal = false) {
+  _tourPlaying = !_tourPlaying;
+  if (_tourPlaying) {
+    runInfographicVideoLoop(inModal);
+  } else {
+    stopInfographicVideo();
+    if (inModal) renderTourInsideModal(document.getElementById('appModalContent'));
+    else renderOnboardingStep();
+  }
+}
+
+function toggleInfographicVoice(inModal = false) {
+  _tourVoiceEnabled = !_tourVoiceEnabled;
+  if (!_tourVoiceEnabled) {
+    stopTourSpeech();
+  } else {
+    const slide = APP_TOUR_SLIDES[onboardingDraft.tourSlide] || APP_TOUR_SLIDES[0];
+    speakTourSlide(slide.speech);
+  }
+  if (inModal) renderTourInsideModal(document.getElementById('appModalContent'));
+  else renderOnboardingStep();
+}
+
+function stopInfographicVideo() {
+  _tourPlaying = false;
+  if (_tourAutoPlayTimer) {
+    clearTimeout(_tourAutoPlayTimer);
+    _tourAutoPlayTimer = null;
+  }
+  stopTourSpeech();
+}
+
+function runInfographicVideoLoop(inModal = false) {
+  if (_tourAutoPlayTimer) clearTimeout(_tourAutoPlayTimer);
+  const slide = APP_TOUR_SLIDES[onboardingDraft.tourSlide] || APP_TOUR_SLIDES[0];
+
+  if (inModal) renderTourInsideModal(document.getElementById('appModalContent'), true);
+  else renderOnboardingStep(true);
+
+  if (_tourVoiceEnabled) {
+    speakTourSlide(slide.speech);
+  }
+
+  _tourAutoPlayTimer = setTimeout(() => {
+    if (!_tourPlaying) return;
+    if (onboardingDraft.tourSlide < APP_TOUR_SLIDES.length - 1) {
+      onboardingDraft.tourSlide++;
+      runInfographicVideoLoop(inModal);
+    } else {
+      _tourPlaying = false;
+      if (inModal) renderTourInsideModal(document.getElementById('appModalContent'));
+      else renderOnboardingStep();
+    }
+  }, (slide.durationSec || 10) * 1000);
+}
+
+function buildInfographicVideoPlayerHTML(inModal = false) {
+  const slide = APP_TOUR_SLIDES[onboardingDraft.tourSlide] || APP_TOUR_SLIDES[0];
+  const totalSlides = APP_TOUR_SLIDES.length;
+  const idx = onboardingDraft.tourSlide;
+  const pct = Math.round(((idx + 1) / totalSlides) * 100);
+
+  return `
+    <!-- Cinematic Animated Infographic Video Player -->
+    <div class="rounded-3xl bg-gradient-to-br from-slate-900 via-[#11192c] to-slate-950 text-white p-5 space-y-3.5 shadow-2xl border border-slate-800 relative overflow-hidden">
+      <!-- Top Video Player Controls Bar -->
+      <div class="flex items-center justify-between gap-2 pb-2 border-b border-slate-800/90">
+        <div class="flex items-center gap-2">
+          <button onclick="toggleInfographicVideoPlay(${inModal})" class="px-3 py-1.5 rounded-full ${
+            _tourPlaying ? 'bg-amber-500 text-slate-950' : 'bg-emerald-500 text-slate-950'
+          } text-[11px] font-extrabold flex items-center gap-1 shadow transition">
+            <span>${_tourPlaying ? '⏸️ Pause Video' : '▶️ Play Infographic Video'}</span>
+          </button>
+          <button onclick="toggleInfographicVoice(${inModal})" class="px-2.5 py-1.5 rounded-full ${
+            _tourVoiceEnabled ? 'bg-sky-500/25 text-sky-300 border border-sky-500/40' : 'bg-slate-800 text-slate-400'
+          } text-[11px] font-bold transition" title="Toggle Voiceover Narration">
+            ${_tourVoiceEnabled ? '🔊 Voice ON' : '🔇 Voice OFF'}
+          </button>
+        </div>
+        <span class="text-[11px] font-mono text-slate-400">0:${String((idx + 1) * 15).padStart(2, '0')} / 1:00</span>
+      </div>
+
+      <!-- Scene Header & Animated Infographic Stage -->
+      <div class="space-y-2 py-1">
+        <div class="text-[10px] font-extrabold uppercase tracking-wider text-emerald-400">${slide.badge}</div>
+        <h2 class="text-base sm:text-lg font-extrabold leading-snug anim-float">${slide.title}</h2>
+        <p class="text-xs text-slate-300 leading-relaxed anim-float">${slide.desc}</p>
+        ${slide.infographicHTML || ''}
+      </div>
+
+      <!-- Video Timeline Scrubber Bar -->
+      <div class="space-y-1.5 pt-2">
+        <div class="h-1.5 w-full bg-slate-800 rounded-full overflow-hidden">
+          <div class="h-full bg-gradient-to-r from-emerald-500 to-teal-400 transition-all duration-500" style="width: ${pct}%"></div>
+        </div>
+        <div class="grid grid-cols-4 gap-1 text-[10px] text-center">
+          ${['1. Why Different', '2. Body Science', '3. Daily Meals', '4. Store Sync'].map((lbl, i) => `
+            <button onclick="stopInfographicVideo(); onboardingDraft.tourSlide=${i}; ${inModal ? "renderTourInsideModal(document.getElementById('appModalContent'))" : 'renderOnboardingStep()'};" class="py-1 rounded-lg font-semibold truncate transition ${
+              i === idx ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' : 'text-slate-500 hover:text-slate-300'
+            }">${lbl}</button>
+          `).join('')}
+        </div>
+      </div>
+    </div>
+  `;
+}
 
 function speakTourSlide(text) {
   try {
@@ -2645,73 +2798,49 @@ function startFamilyOnboarding() {
   renderOnboardingStep();
 }
 
-function renderOnboardingStep() {
-  stopTourSpeech();
+function renderOnboardingStep(keepPlaying = false) {
+  if (!keepPlaying) stopInfographicVideo();
   const container = document.getElementById('authContainer');
   if (!container) return;
 
   const s = onboardingDraft.step;
 
-  // STEP 1: INTERACTIVE VISUAL & AUDIO APP TOUR
+  // STEP 1: INTERACTIVE ANIMATED INFOGRAPHIC VIDEO PLAYER
   if (s === 1) {
-    const slide = APP_TOUR_SLIDES[onboardingDraft.tourSlide] || APP_TOUR_SLIDES[0];
     const totalSlides = APP_TOUR_SLIDES.length;
     const idx = onboardingDraft.tourSlide;
 
     container.innerHTML = `
-      <div class="soft-card rounded-3xl p-6 sm:p-7 space-y-5">
+      <div class="soft-card rounded-3xl p-5 sm:p-6 space-y-4">
         <div class="flex items-center justify-between">
           <span class="text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full bg-emerald-50 dark:bg-emerald-500/15 text-emerald-600 dark:text-emerald-400">
-            🎬 Interactive App Guide (${idx + 1} of ${totalSlides})
+            🎬 What Makes This App Different (1-Min Infographic Video)
           </span>
-          <button onclick="openAuthOverlay('signin')" class="text-xs text-slate-400 hover:text-slate-600 font-semibold">
-            Back to Sign In ✕
+          <button onclick="stopInfographicVideo(); openAuthOverlay('signin');" class="text-xs text-slate-400 hover:text-slate-600 font-semibold">
+            Sign In ✕
           </button>
         </div>
 
-        <!-- Visual Animated Presentation Card -->
-        <div class="p-5 rounded-3xl bg-gradient-to-br from-slate-900 to-slate-800 text-white space-y-3 shadow-xl">
-          <div class="flex items-center justify-between">
-            <span class="text-3xl">${slide.icon}</span>
-            <button onclick="speakTourSlide('${slide.speech.replace(/'/g, "\\'")}')" class="px-3 py-1.5 rounded-full bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 text-[11px] font-bold flex items-center gap-1.5 transition">
-              <span>🔊</span> Listen to Audio Guide
-            </button>
-          </div>
-          <div class="text-[11px] font-bold uppercase tracking-wider text-emerald-400">${slide.badge}</div>
-          <h2 class="text-lg font-extrabold leading-snug">${slide.title}</h2>
-          <p class="text-xs text-slate-300 leading-relaxed">${slide.desc}</p>
-          <ul class="space-y-1.5 pt-2 border-t border-slate-700/80 text-xs text-emerald-200">
-            ${slide.bullets.map(b => `<li class="flex items-start gap-2"><span>✓</span><span>${b}</span></li>`).join('')}
-          </ul>
-        </div>
-
-        <!-- Slide Progress Dots -->
-        <div class="flex items-center justify-center gap-2">
-          ${APP_TOUR_SLIDES.map((_, i) => `
-            <button onclick="onboardingDraft.tourSlide=${i}; renderOnboardingStep();" class="h-2 rounded-full transition-all ${
-              i === idx ? 'w-6 bg-emerald-500' : 'w-2 bg-slate-200 dark:bg-slate-700'
-            }"></button>
-          `).join('')}
-        </div>
+        ${buildInfographicVideoPlayerHTML(false)}
 
         <!-- Navigation Buttons -->
-        <div class="flex items-center justify-between gap-3 pt-1">
+        <div class="flex items-center justify-between gap-2.5 pt-1">
           ${idx > 0 ? `
-            <button onclick="onboardingDraft.tourSlide--; renderOnboardingStep();" class="px-4 py-3 rounded-2xl bg-slate-100 dark:bg-slate-800 text-xs font-bold">
-              ◀ Back
+            <button onclick="stopInfographicVideo(); onboardingDraft.tourSlide--; renderOnboardingStep();" class="px-3.5 py-3 rounded-2xl bg-slate-100 dark:bg-slate-800 text-xs font-bold">
+              ◀ Prev Scene
             </button>
           ` : `
-            <button onclick="onboardingDraft.step=2; renderOnboardingStep();" class="px-4 py-3 rounded-2xl text-slate-400 hover:text-slate-600 text-xs font-semibold">
-              Skip Tour
+            <button onclick="stopInfographicVideo(); onboardingDraft.step=2; renderOnboardingStep();" class="px-3.5 py-3 rounded-2xl text-slate-400 hover:text-slate-600 text-xs font-semibold">
+              Skip to Setup
             </button>
           `}
 
           ${idx < totalSlides - 1 ? `
-            <button onclick="onboardingDraft.tourSlide++; renderOnboardingStep();" class="flex-1 py-3 rounded-2xl bg-slate-900 dark:bg-emerald-500 text-white dark:text-slate-950 text-xs font-extrabold shadow-md">
-              Next Slide (${idx + 2}/${totalSlides}) ▶
+            <button onclick="stopInfographicVideo(); onboardingDraft.tourSlide++; renderOnboardingStep();" class="flex-1 py-3 rounded-2xl bg-slate-900 dark:bg-emerald-500 text-white dark:text-slate-950 text-xs font-extrabold shadow-md">
+              Next Scene (${idx + 2}/${totalSlides}) ▶
             </button>
           ` : `
-            <button onclick="onboardingDraft.step=2; renderOnboardingStep();" class="flex-1 py-3.5 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-extrabold shadow-lg">
+            <button onclick="stopInfographicVideo(); onboardingDraft.step=2; renderOnboardingStep();" class="flex-1 py-3.5 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-extrabold shadow-lg">
               🚀 Start Building My Profile (Step 1 of 3) ▶
             </button>
           `}
@@ -3081,44 +3210,30 @@ function openAppTourModal() {
   modal.classList.remove('hidden');
 }
 
-function renderTourInsideModal(contentEl) {
-  stopTourSpeech();
-  const slide = APP_TOUR_SLIDES[onboardingDraft.tourSlide] || APP_TOUR_SLIDES[0];
+function renderTourInsideModal(contentEl, keepPlaying = false) {
+  if (!keepPlaying) stopInfographicVideo();
   const totalSlides = APP_TOUR_SLIDES.length;
   const idx = onboardingDraft.tourSlide;
 
   contentEl.innerHTML = `
     <div class="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
-      <span class="text-xs font-extrabold text-emerald-600 dark:text-emerald-400">🎬 App Tour (${idx + 1}/${totalSlides})</span>
-      <button onclick="stopTourSpeech(); closeModal();" class="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-500 font-bold">✕</button>
+      <span class="text-xs font-extrabold text-emerald-600 dark:text-emerald-400">🎬 60-Second Infographic Video (${idx + 1}/${totalSlides})</span>
+      <button onclick="stopInfographicVideo(); closeModal();" class="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-500 font-bold">✕</button>
     </div>
 
-    <div class="p-5 rounded-3xl bg-slate-900 text-white space-y-3">
-      <div class="flex items-center justify-between">
-        <span class="text-3xl">${slide.icon}</span>
-        <button onclick="speakTourSlide('${slide.speech.replace(/'/g, "\\'")}')" class="px-3 py-1.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 text-[11px] font-bold">
-          🔊 Listen to Audio Guide
-        </button>
-      </div>
-      <div class="text-[11px] font-bold uppercase text-emerald-400">${slide.badge}</div>
-      <h3 class="text-base font-extrabold">${slide.title}</h3>
-      <p class="text-xs text-slate-300 leading-relaxed">${slide.desc}</p>
-      <ul class="space-y-1.5 pt-2 border-t border-slate-800 text-xs text-emerald-200">
-        ${slide.bullets.map(b => `<li>✓ ${b}</li>`).join('')}
-      </ul>
-    </div>
+    ${buildInfographicVideoPlayerHTML(true)}
 
     <div class="flex items-center justify-between gap-2 pt-1">
-      <button onclick="if(onboardingDraft.tourSlide>0){onboardingDraft.tourSlide--; renderTourInsideModal(document.getElementById('appModalContent'));}" class="px-4 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-xs font-bold ${idx === 0 ? 'opacity-40 cursor-not-allowed' : ''}">
-        ◀ Prev
+      <button onclick="if(onboardingDraft.tourSlide>0){stopInfographicVideo(); onboardingDraft.tourSlide--; renderTourInsideModal(document.getElementById('appModalContent'));}" class="px-4 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-xs font-bold ${idx === 0 ? 'opacity-40 cursor-not-allowed' : ''}">
+        ◀ Prev Scene
       </button>
       ${idx < totalSlides - 1 ? `
-        <button onclick="onboardingDraft.tourSlide++; renderTourInsideModal(document.getElementById('appModalContent'));" class="flex-1 py-2.5 rounded-xl bg-slate-900 dark:bg-emerald-500 text-white dark:text-slate-950 text-xs font-bold">
-          Next Slide ▶
+        <button onclick="stopInfographicVideo(); onboardingDraft.tourSlide++; renderTourInsideModal(document.getElementById('appModalContent'));" class="flex-1 py-2.5 rounded-xl bg-slate-900 dark:bg-emerald-500 text-white dark:text-slate-950 text-xs font-bold">
+          Next Scene ▶
         </button>
       ` : `
-        <button onclick="stopTourSpeech(); closeModal();" class="flex-1 py-2.5 rounded-xl bg-emerald-600 text-white text-xs font-bold">
-          ✓ Got It!
+        <button onclick="stopInfographicVideo(); closeModal();" class="flex-1 py-2.5 rounded-xl bg-emerald-600 text-white text-xs font-bold">
+          ✓ Done Watching
         </button>
       `}
     </div>

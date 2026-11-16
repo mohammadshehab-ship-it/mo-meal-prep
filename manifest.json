@@ -1,7 +1,7 @@
 {
-  "name": "Mo's Meal Prep & Macro Studio",
-  "short_name": "Mo Meal Prep",
-  "description": "Mo's Personalized Intermittent Fasting Meal Prep, AI Chef & Smart Grocery Sync",
+  "name": "Meal Prep & Macro Studio",
+  "short_name": "Meal Prep",
+  "description": "Personalized Intermittent Fasting Meal Prep, AI Chef & Smart Grocery Sync",
   "start_url": "./index.html",
   "display": "standalone",
   "background_color": "#0f172a",
