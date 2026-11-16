@@ -38,14 +38,49 @@ function formatFullDateWithYear(isoStr) {
   return dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
-function getRecipeLinks(mealName = '') {
-  const cleanTitle = mealName.replace(/\(.*?\)/g, '').replace(/—/g, ' ').trim();
-  const ytQuery = encodeURIComponent(`how to make ${cleanTitle} healthy recipe`);
-  const articleQuery = encodeURIComponent(cleanTitle);
+// Lookup map of verified direct videoUrl & articleUrl by meal name or id
+function getVerifiedLinksForMeal(meal) {
+  if (!meal) return {};
+  if (meal.videoUrl || meal.articleUrl) {
+    return { videoUrl: meal.videoUrl || null, articleUrl: meal.articleUrl || null };
+  }
+  const allCurated = [
+    ...(window.STARTER_WEEK_PLAN || []).flatMap(d => d.meals),
+    ...(window.ON_DEMAND_POOL || [])
+  ];
+  const match = allCurated.find(c => c.id === meal.id || c.name === meal.name);
   return {
-    youtubeUrl: `https://www.youtube.com/results?search_query=${ytQuery}`,
-    articleUrl: `https://www.allrecipes.com/search?q=${articleQuery}`
+    videoUrl: match?.videoUrl || null,
+    articleUrl: match?.articleUrl || null
   };
+}
+
+// Auto-balance a day's 4 meals so their cumulative sum hits 100% of the active daily target
+function balanceDayToTarget(dayObj, target = state.profile) {
+  if (!dayObj || !dayObj.meals || dayObj.meals.length === 0) return;
+  dayObj.meals.forEach(m => {
+    const links = getVerifiedLinksForMeal(m);
+    if (links.videoUrl) m.videoUrl = links.videoUrl;
+    if (links.articleUrl) m.articleUrl = links.articleUrl;
+  });
+
+  const keys = ['calories', 'protein', 'carbs', 'fat', 'fiber'];
+  keys.forEach(k => {
+    const targetVal = target[k];
+    if (!targetVal) return;
+    const currentSum = dayObj.meals.reduce((acc, m) => acc + (m[k] || 0), 0);
+    if (currentSum > 0 && currentSum !== targetVal) {
+      const ratio = targetVal / currentSum;
+      // Scale all meals proportionally first
+      dayObj.meals.forEach(m => {
+        m[k] = Math.max(1, Math.round(m[k] * ratio));
+      });
+      // Absorb any 1-2 unit rounding remainder into Dinner (meal[1] or meal[0]) so sum is 100% exact
+      const mainIdx = dayObj.meals.length > 1 ? 1 : 0;
+      const sumOthers = dayObj.meals.reduce((acc, m, idx) => idx === mainIdx ? acc : acc + m[k], 0);
+      dayObj.meals[mainIdx][k] = Math.max(1, targetVal - sumOthers);
+    }
+  });
 }
 
 const currentMondayISO = getMondayOfDate(new Date());
@@ -156,16 +191,12 @@ function saveState(skipCloud = false) {
 
 function ensureWeekExists(mondayISO, forceRegenerate = false, customStyle = null) {
   if (state.weeksByStartISO[mondayISO] && !forceRegenerate) {
+    // Ensure all days in existing saved week have verified links & exact daily macro balance
+    state.weeksByStartISO[mondayISO].days.forEach(d => balanceDayToTarget(d, state.profile));
     return state.weeksByStartISO[mondayISO];
   }
 
   const style = customStyle || state.profile.prepStyle || 'mix';
-  const calRatio = state.profile.calories / 1800;
-  const protRatio = state.profile.protein / 135;
-  const carbRatio = state.profile.carbs / 156;
-  const fatRatio = state.profile.fat / 70;
-  const fibRatio = state.profile.fiber / 35;
-
   const baseDays = JSON.parse(JSON.stringify(window.STARTER_WEEK_PLAN));
 
   baseDays.forEach((dayObj, idx) => {
@@ -181,14 +212,10 @@ function ensureWeekExists(mondayISO, forceRegenerate = false, customStyle = null
     }
 
     dayObj.meals.forEach(m => {
-      m.calories = Math.round(m.calories * calRatio);
-      m.protein = Math.round(m.protein * protRatio);
-      m.carbs = Math.round(m.carbs * carbRatio);
-      m.fat = Math.round(m.fat * fatRatio);
-      m.fiber = Math.round(m.fiber * fibRatio);
       m.upgradeApplied = false;
       recordMealInHistory(m.name, dayDateISO, m.primaryProtein);
     });
+    balanceDayToTarget(dayObj, state.profile);
   });
 
   state.weeksByStartISO[mondayISO] = {
@@ -598,7 +625,7 @@ function openRecipeDrawer(dayIdx, mealIdx, standaloneMeal = null) {
   const eff = getMealEffectiveMacros(meal);
   const isFav = state.favorites.some(f => f.name === meal.name);
   const up = meal.flavorUpgrade;
-  const links = getRecipeLinks(meal.name);
+  const links = getVerifiedLinksForMeal(meal);
 
   content.innerHTML = `
     <div class="flex items-start justify-between gap-3">
@@ -617,7 +644,7 @@ function openRecipeDrawer(dayIdx, mealIdx, standaloneMeal = null) {
       <button onclick="closeRecipeDrawer()" class="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-500 font-bold shrink-0">✕</button>
     </div>
 
-    <!-- Action Pills inside Drawer -->
+    <!-- Action Pills inside Drawer (Video & Article ONLY shown when a specific verified link exists!) -->
     <div class="flex flex-wrap gap-2 pt-1">
       <button onclick='toggleFavoriteMealFromDrawer()' class="px-3 py-1.5 rounded-xl text-xs font-semibold border transition ${
         isFav
@@ -637,12 +664,16 @@ function openRecipeDrawer(dayIdx, mealIdx, standaloneMeal = null) {
         </button>
       `}
 
-      <a href="${links.youtubeUrl}" target="_blank" rel="noopener noreferrer" class="px-3 py-1.5 rounded-xl bg-rose-500/10 text-rose-600 dark:text-rose-400 text-xs font-semibold">
-        ▶️ Video Guide ↗
-      </a>
-      <a href="${links.articleUrl}" target="_blank" rel="noopener noreferrer" class="px-3 py-1.5 rounded-xl bg-sky-500/10 text-sky-600 dark:text-sky-400 text-xs font-semibold">
-        📖 Recipe Article ↗
-      </a>
+      ${links.videoUrl ? `
+        <a href="${links.videoUrl}" target="_blank" rel="noopener noreferrer" class="px-3 py-1.5 rounded-xl bg-rose-500/10 text-rose-600 dark:text-rose-400 text-xs font-semibold">
+          ▶️ Watch Video ↗
+        </a>
+      ` : ''}
+      ${links.articleUrl ? `
+        <a href="${links.articleUrl}" target="_blank" rel="noopener noreferrer" class="px-3 py-1.5 rounded-xl bg-sky-500/10 text-sky-600 dark:text-sky-400 text-xs font-semibold">
+          📖 Recipe Article ↗
+        </a>
+      ` : ''}
     </div>
 
     <!-- Optional Flavor Upgrade Switch -->
@@ -1175,15 +1206,23 @@ function openSwapMealModal(dayIdx, mealIdx) {
 
 function replaceMealSlot(dayIdx, mealIdx, newMeal) {
   const days = getActiveWeekDays();
+  const currentSlotMeal = days[dayIdx].meals[mealIdx];
   const copy = JSON.parse(JSON.stringify(newMeal));
-  copy.slot = days[dayIdx].meals[mealIdx].slot;
+  copy.slot = currentSlotMeal.slot;
   copy.id = `${dayIdx}-${mealIdx}-${Date.now()}`;
+  // Inherit exact slot macro budget so the day's cumulative sum remains 100% on target!
+  copy.calories = currentSlotMeal.calories;
+  copy.protein = currentSlotMeal.protein;
+  copy.carbs = currentSlotMeal.carbs;
+  copy.fat = currentSlotMeal.fat;
+  copy.fiber = currentSlotMeal.fiber;
   days[dayIdx].meals[mealIdx] = copy;
+  balanceDayToTarget(days[dayIdx], state.profile);
   recordMealInHistory(copy.name, days[dayIdx].dateISO, copy.primaryProtein);
   saveState();
   closeModal();
   renderAll();
-  showToast('✓ Meal swapped & Grocery List synced!');
+  showToast('✓ Meal swapped, macros balanced & Grocery List synced!');
 }
 
 function openAssignToPlanModal(meal) {
