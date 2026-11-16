@@ -188,9 +188,17 @@ document.addEventListener('DOMContentLoaded', async () => {
     } catch (e) {}
   }
 
+  const urlParams = new URLSearchParams(window.location.search);
+  const isFamilyInvite = urlParams.get('invite') === '1';
+
   if (!currentSession || !currentSession.username) {
-    // Show Sign-In / Family Onboarding Screen
-    openAuthOverlay('signin');
+    if (isFamilyInvite) {
+      // Family invite link lands directly on the HD Intro Video & Guided Onboarding
+      startFamilyOnboarding();
+    } else {
+      // Show Sign-In / Family Onboarding Screen
+      openAuthOverlay('signin');
+    }
     return;
   }
 
@@ -2519,57 +2527,179 @@ const APP_TOUR_SLIDES = [
   }
 ];
 
-// Exact chapter timestamps (seconds) in intro-video.mp4
+// Exact chapter timestamps (seconds) in intro-video.mp4 (v3)
 const VIDEO_CHAPTERS = [
   { label: '1. Why Different', time: 0.0 },
   { label: '2. Body Science', time: 17.4 },
   { label: '3. Daily Variety', time: 33.4 },
-  { label: '4. Store Sync', time: 50.8 }
+  { label: '4. Store Sync', time: 50.5 }
 ];
 
 const PUBLIC_APP_URL = 'https://mohammadshehab-ship-it.github.io/mo-meal-prep/';
-const PUBLIC_VIDEO_URL = 'https://mohammadshehab-ship-it.github.io/mo-meal-prep/intro-video.mp4';
+const PUBLIC_INVITE_URL = 'https://mohammadshehab-ship-it.github.io/mo-meal-prep/?invite=1';
+const PUBLIC_VIDEO_URL = 'https://mohammadshehab-ship-it.github.io/mo-meal-prep/intro-video.mp4?v=3';
 
-async function shareAppAndVideoToFamily() {
-  const shareText = `🥗 Hey family! Check out our Meal Prep & Macro Studio app!\n\n🎬 Watch the 1-minute intro video & build your own custom 7-day meal plan (click "New Here? Start Guided Profile Onboarding"):\n👉 ${PUBLIC_APP_URL}\n\n📹 Direct Intro Video Link:\n${PUBLIC_VIDEO_URL}`;
+let cachedIntroVideoFile = null;
+let introVideoPreloadPromise = null;
 
-  // Try native mobile share sheet (with MP4 file attachment if supported, otherwise text + link)
-  if (navigator.share) {
-    try {
-      const resp = await fetch('./intro-video.mp4').catch(() => null);
-      if (resp && resp.ok && navigator.canShare) {
-        const blob = await resp.blob();
-        const file = new File([blob], 'Meal-Prep-Studio-Intro.mp4', { type: 'video/mp4' });
-        if (navigator.canShare({ files: [file] })) {
-          await navigator.share({
-            title: 'Meal Prep & Macro Studio',
-            text: shareText,
-            files: [file]
-          });
-          return;
-        }
+function preloadIntroVideoForShare() {
+  if (cachedIntroVideoFile) return Promise.resolve(cachedIntroVideoFile);
+  if (introVideoPreloadPromise) return introVideoPreloadPromise;
+  introVideoPreloadPromise = fetch('./intro-video.mp4?v=3')
+    .then((resp) => (resp && resp.ok ? resp.blob() : null))
+    .then((blob) => {
+      if (blob) {
+        cachedIntroVideoFile = new File([blob], 'Meal-Prep-Studio-Intro.mp4', { type: 'video/mp4' });
       }
-      await navigator.share({
-        title: 'Meal Prep & Macro Studio',
-        text: shareText,
-        url: PUBLIC_APP_URL
-      });
-      return;
-    } catch (e) {}
-  }
+      const btn = document.getElementById('shareVideoFileBtnText');
+      if (btn && cachedIntroVideoFile) {
+        btn.textContent = (navigator.canShare && navigator.canShare({ files: [cachedIntroVideoFile] }))
+          ? 'Send MP4 Video File Directly (iPhone / Android)'
+          : 'Download MP4 Video & Copy Invite (2.3 MB)';
+      }
+      return cachedIntroVideoFile;
+    })
+    .catch(() => null);
+  return introVideoPreloadPromise;
+}
 
-  // Fallback: copy invitation message + app & video links to clipboard
+function getFamilyShareMessage() {
+  return `Hey family! Check out our personal Meal Prep & Macro Studio app!\n\nTap below to watch the 1-minute animated intro video and build your own private custom meal plan:\n${PUBLIC_INVITE_URL}\n\nDirect HD Intro Video:\n${PUBLIC_VIDEO_URL}`;
+}
+
+function shareAppAndVideoToFamily() {
+  openShareFamilyModal();
+}
+
+function openShareFamilyModal() {
+  preloadIntroVideoForShare();
+  const modal = document.getElementById('appModal');
+  const content = document.getElementById('appModalContent');
+  if (!modal || !content) return;
+
+  const shareText = getFamilyShareMessage();
+  const encodedMsg = encodeURIComponent(shareText);
+  const waHref = `https://wa.me/?text=${encodedMsg}`;
+  const isApple = /iPad|iPhone|iPod|Macintosh/i.test(navigator.userAgent || '');
+  const smsHref = isApple ? `sms:&body=${encodedMsg}` : `sms:?body=${encodedMsg}`;
+  const canNativeShare = typeof navigator.share === 'function';
+  const fileReady = !!(cachedIntroVideoFile && navigator.canShare && navigator.canShare({ files: [cachedIntroVideoFile] }));
+
+  content.innerHTML = `
+    <div class="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+      <div>
+        <h3 class="text-base font-extrabold">📤 Share App & Video With Family</h3>
+        <p class="text-[11px] text-slate-400">Family opens straight onto the 1-min video & private onboarding</p>
+      </div>
+      <button onclick="closeModal()" class="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-500 font-bold">✕</button>
+    </div>
+
+    <div class="space-y-3 text-xs">
+      ${canNativeShare ? `
+        <button onclick="triggerNativeShareLink()" class="w-full py-3.5 px-4 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/20 transition">
+          <span>📱</span> Share Invite Link via Phone Share Sheet
+        </button>
+      ` : ''}
+
+      <button onclick="triggerShareVideoFile()" class="w-full py-3 px-4 rounded-2xl bg-slate-900 dark:bg-emerald-500/20 hover:opacity-90 text-white dark:text-emerald-300 border border-emerald-500/30 font-bold flex items-center justify-center gap-2 transition">
+        <span>🎬</span>
+        <span id="shareVideoFileBtnText">${fileReady ? 'Send MP4 Video File Directly (iPhone / Android)' : 'Send / Download HD MP4 Video File'}</span>
+      </button>
+
+      <div class="grid grid-cols-2 gap-2">
+        <a href="${waHref}" target="_blank" rel="noopener" class="py-3 px-3 rounded-2xl bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-500/30 text-emerald-700 dark:text-emerald-300 font-bold flex items-center justify-center gap-1.5 hover:bg-emerald-100 dark:hover:bg-emerald-500/20 transition">
+          <span>💬</span> WhatsApp
+        </a>
+        <a href="${smsHref}" class="py-3 px-3 rounded-2xl bg-sky-50 dark:bg-sky-500/10 border border-sky-500/30 text-sky-700 dark:text-sky-300 font-bold flex items-center justify-center gap-1.5 hover:bg-sky-100 dark:hover:bg-sky-500/20 transition">
+          <span>✉️</span> iMessage / SMS
+        </a>
+      </div>
+
+      <div class="p-3 rounded-2xl bg-slate-50 dark:bg-slate-900/70 border border-slate-200/70 dark:border-slate-800 space-y-2">
+        <div class="flex items-center justify-between text-[11px]">
+          <span class="font-bold text-slate-500 dark:text-slate-300">Ready-to-Send Invite Message</span>
+          <button onclick="copyFamilyInviteText()" class="text-emerald-600 dark:text-emerald-400 font-extrabold hover:underline">📋 Copy Message</button>
+        </div>
+        <textarea id="familyInviteTextarea" readonly rows="4" class="w-full soft-input rounded-xl p-2.5 text-[11px] leading-relaxed font-medium select-all">${shareText}</textarea>
+      </div>
+
+      <div class="grid grid-cols-2 gap-2">
+        <button onclick="copyFamilyOnboardingLink()" class="py-2.5 px-3 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 font-bold text-slate-700 dark:text-slate-200 transition">
+          🔗 Copy App Link
+        </button>
+        <button onclick="downloadIntroVideoMp4()" class="py-2.5 px-3 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 font-bold text-slate-700 dark:text-slate-200 transition">
+          ⬇️ Save MP4 Video
+        </button>
+      </div>
+    </div>
+  `;
+  modal.classList.remove('hidden');
+}
+
+function triggerNativeShareLink() {
+  if (!navigator.share) {
+    copyFamilyInviteText();
+    return;
+  }
+  // Must call navigator.share synchronously on user click for iOS Safari activation
+  navigator.share({
+    title: 'Meal Prep & Macro Studio',
+    text: 'Watch this 1-min animated video & build your own private 7-day meal plan!',
+    url: PUBLIC_INVITE_URL
+  }).catch((err) => {
+    if (err && err.name !== 'AbortError') {
+      copyFamilyInviteText();
+    }
+  });
+}
+
+function triggerShareVideoFile() {
+  const shareText = getFamilyShareMessage();
+  if (cachedIntroVideoFile && navigator.share && navigator.canShare && navigator.canShare({ files: [cachedIntroVideoFile] })) {
+    // Synchronous call with pre-loaded File preserves iOS Safari user gesture
+    navigator.share({
+      title: 'Meal Prep Studio Intro Video',
+      text: shareText,
+      files: [cachedIntroVideoFile]
+    }).catch((err) => {
+      if (err && err.name !== 'AbortError') {
+        downloadIntroVideoMp4();
+        copyFamilyInviteText();
+      }
+    });
+    return;
+  }
+  downloadIntroVideoMp4();
+  copyFamilyInviteText();
+}
+
+async function copyFamilyInviteText() {
+  const shareText = getFamilyShareMessage();
   try {
     await navigator.clipboard.writeText(shareText);
-    showToast('📋 Family invite message + App & Video links copied! Paste into WhatsApp or iMessage.');
+    showToast('📋 Family invite message + links copied!');
   } catch (e) {
-    showToast('Copy link: ' + PUBLIC_APP_URL);
+    const ta = document.getElementById('familyInviteTextarea');
+    if (ta) {
+      ta.select();
+      document.execCommand('copy');
+      showToast('📋 Family invite copied!');
+    }
+  }
+}
+
+async function copyFamilyOnboardingLink() {
+  try {
+    await navigator.clipboard.writeText(PUBLIC_INVITE_URL);
+    showToast('🔗 Invite link (?invite=1) copied!');
+  } catch (e) {
+    showToast(PUBLIC_INVITE_URL);
   }
 }
 
 function downloadIntroVideoMp4() {
   const a = document.createElement('a');
-  a.href = './intro-video.mp4';
+  a.href = './intro-video.mp4?v=3';
   a.download = 'Meal-Prep-Studio-Intro.mp4';
   document.body.appendChild(a);
   a.click();
@@ -2598,13 +2728,14 @@ function stopTourSpeech() {
 }
 
 function buildInfographicVideoPlayerHTML() {
+  preloadIntroVideoForShare();
   return `
     <!-- Real Full-Motion HD MP4 Animated Video Player -->
     <div class="rounded-3xl bg-slate-950 text-white p-3.5 space-y-3 shadow-2xl border border-slate-800 overflow-hidden">
       <div class="relative rounded-2xl overflow-hidden bg-black border border-slate-800/80 aspect-video">
         <video
           id="introVideoPlayerEl"
-          src="./intro-video.mp4?v=2"
+          src="./intro-video.mp4?v=3"
           controls
           playsinline
           preload="auto"
@@ -2616,7 +2747,7 @@ function buildInfographicVideoPlayerHTML() {
       <div class="space-y-1.5">
         <div class="flex items-center justify-between text-[10px] text-slate-400 px-1">
           <span class="font-bold text-emerald-400 uppercase tracking-wider">🎬 Jump to Video Chapter:</span>
-          <span>HD 720p • Studio Voice + Music</span>
+          <span>HD 720p • Studio Voice + Upbeat Music</span>
         </div>
         <div class="grid grid-cols-4 gap-1.5 text-[10px] text-center">
           ${VIDEO_CHAPTERS.map((ch) => `
@@ -2770,6 +2901,8 @@ async function handleUserSignIn() {
 }
 
 function startFamilyOnboarding() {
+  const overlay = document.getElementById('authOverlay');
+  if (overlay) overlay.classList.remove('hidden');
   onboardingDraft = {
     step: 1,
     tourSlide: 0,
