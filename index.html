@@ -1,244 +1,217 @@
 <!DOCTYPE html>
-<html lang="en" class="dark">
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <meta name="theme-color" content="#0f172a" />
+  <meta name="theme-color" content="#f8fafc" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <meta name="apple-mobile-web-app-title" content="Mo Meal Prep" />
   <title>Mo Meal Prep</title>
   <link rel="manifest" href="./manifest.json" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
-    tailwind.config = {
-      darkMode: 'class',
-      theme: {
-        extend: {
-          colors: {
-            slate: {
-              850: '#162033',
-              950: '#090d16'
-            }
-          }
-        }
-      }
-    };
+    tailwind.config = { darkMode: 'class' };
   </script>
   <style>
     body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-      background-color: #090d16;
-      color: #f8fafc;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background-color: #f8fafc;
+      color: #0f172a;
       -webkit-tap-highlight-color: transparent;
+    }
+    html.dark body {
+      background-color: #0b0f17;
+      color: #f8fafc;
     }
     .no-scrollbar::-webkit-scrollbar { display: none; }
     .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
-    .glass-card {
-      background: rgba(30, 41, 59, 0.78);
-      backdrop-filter: blur(12px);
-      border: 1px solid rgba(255, 255, 255, 0.08);
+    .soft-card {
+      background: #ffffff;
+      border: 1px solid #eef2f6;
+      box-shadow: 0 4px 20px -2px rgba(15, 23, 42, 0.04);
+    }
+    html.dark .soft-card {
+      background: #131b2e;
+      border: 1px solid rgba(255, 255, 255, 0.07);
+      box-shadow: 0 8px 30px -4px rgba(0, 0, 0, 0.45);
+    }
+    .soft-input {
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      color: #0f172a;
+    }
+    html.dark .soft-input {
+      background: #0b0f17;
+      border: 1px solid #1e293b;
+      color: #f8fafc;
     }
   </style>
 </head>
-<body class="min-h-screen pb-24 selection:bg-emerald-500 selection:text-white">
+<body class="min-h-screen pb-28 transition-colors duration-200 selection:bg-emerald-500 selection:text-white">
 
-  <!-- Top Sticky Header -->
-  <header class="sticky top-0 z-30 bg-slate-950/90 backdrop-blur-md border-b border-slate-800/80 px-4 py-3">
-    <div class="max-w-3xl mx-auto flex items-center justify-between gap-2">
-      <div class="flex items-center gap-2.5">
-        <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center text-lg shadow-lg shadow-emerald-500/20">
-          🥗
+  <!-- Sleek Minimalist Sticky Header -->
+  <header class="sticky top-0 z-30 bg-white/85 dark:bg-[#0b0f17]/85 backdrop-blur-xl border-b border-slate-100 dark:border-slate-800/80 px-4 py-3">
+    <div class="max-w-xl mx-auto flex items-center justify-between gap-2">
+      <div class="flex items-center gap-3">
+        <div class="w-9 h-9 rounded-2xl bg-emerald-600 text-white flex items-center justify-center font-extrabold text-sm shadow-md shadow-emerald-600/20">
+          M
         </div>
         <div>
           <div class="flex items-center gap-2">
-            <h1 class="font-bold text-base sm:text-lg tracking-tight text-white">Mo Meal Prep</h1>
-            <button onclick="switchTab('profile')" id="headerTargetBadge" class="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/25 transition" title="Click to view or edit your daily calories & macros">
-              1,800 kcal • 135P / 156C / 70F
+            <h1 class="text-base font-extrabold tracking-tight">Mo Meal Prep</h1>
+            <button onclick="switchTab('profile')" id="headerTargetBadge" class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-500/30">
+              1,800 kcal
             </button>
           </div>
-          <p class="text-xs text-slate-400">Intermittent Fasting (2 Meals + 2 Snacks) • Personal Chef & Progress Tracker</p>
+          <p id="currentWeekTitle" class="text-[11px] text-slate-400 font-medium">Nov 9 – Nov 15, 2026</p>
         </div>
       </div>
 
-      <!-- Sync Status Pill -->
-      <button onclick="switchTab('profile')" id="syncStatusBtn" class="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-slate-800/90 hover:bg-slate-800 border border-slate-700 text-xs font-medium text-slate-300 transition">
-        <span id="syncDot" class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-        <span id="syncText">☁️ Firebase Live</span>
-      </button>
+      <div class="flex items-center gap-1.5">
+        <button onclick="switchTab('profile')" id="syncStatusBtn" class="inline-flex items-center gap-1.5 text-[11px] font-semibold px-2.5 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800/90 text-slate-600 dark:text-slate-300">
+          <span id="syncDot" class="w-2 h-2 rounded-full bg-emerald-500"></span>
+          <span id="syncText" class="hidden sm:inline">Synced</span>
+        </button>
+        <button onclick="openCalendarModal()" class="px-2.5 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800/90 hover:bg-slate-200 dark:hover:bg-slate-700 text-xs font-semibold transition" title="Switch Week or View Archive">
+          📅 Weeks
+        </button>
+        <button onclick="toggleThemeMode()" id="themeToggleBtn" class="w-8 h-8 rounded-xl bg-slate-100 dark:bg-slate-800/90 hover:bg-slate-200 dark:hover:bg-slate-700 flex items-center justify-center text-xs transition" title="Toggle Light / Dark Mode">
+          🌙
+        </button>
+      </div>
     </div>
   </header>
 
-  <!-- Main Content Container -->
-  <main class="max-w-3xl mx-auto px-3.5 sm:px-4 pt-4 space-y-5">
+  <!-- Main Centered Mobile-First Container (576px Max Width for Calm, Uncluttered Focus) -->
+  <main class="max-w-xl mx-auto px-4 pt-4 space-y-5">
 
-    <!-- ================= TAB 1: WEEKLY CALENDAR & PLAN ================= -->
-    <section id="tab-plan" class="space-y-4">
+    <!-- ================= TAB 1: TODAY / WEEKLY PLAN ================= -->
+    <section id="tab-plan" class="space-y-5">
 
-      <!-- Calendar Week Navigator & Archive Bar -->
-      <div class="glass-card rounded-2xl p-4 shadow-xl space-y-3">
-        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-800/80">
-          <!-- Calendar Week Picker -->
-          <div class="flex items-center gap-2">
-            <button onclick="changeWeekOffset(-1)" class="px-2.5 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700 text-xs font-bold text-slate-200 transition" title="Previous Week">
-              ◀ Prev
-            </button>
-            <div class="text-center px-2">
-              <div id="currentWeekTitle" class="text-sm font-bold text-white">Nov 9 – Nov 15, 2026</div>
-              <div id="currentWeekSubtitle" class="text-[11px] text-emerald-400 font-medium">Current Active Week</div>
-            </div>
-            <button onclick="changeWeekOffset(1)" class="px-2.5 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700 text-xs font-bold text-slate-200 transition" title="Next Week">
-              Next ▶
-            </button>
-            <button onclick="jumpToCurrentWeek()" id="btnJumpToday" class="hidden px-2.5 py-1.5 rounded-xl bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 text-xs font-semibold">
-              Today
-            </button>
-          </div>
+      <!-- Clean Horizontal 7-Day Strip -->
+      <div id="daySelectorRow" class="flex items-center justify-between gap-1.5 overflow-x-auto no-scrollbar py-0.5">
+        <!-- Populated by JS -->
+      </div>
 
-          <!-- Jump to Date / View Past Weeks Archive -->
-          <div class="flex items-center gap-2">
-            <input type="date" id="calendarDatePicker" onchange="jumpToSelectedDate(this.value)" class="bg-slate-900 border border-slate-700 rounded-xl px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-emerald-500" title="Jump to any Day, Month, or Year" />
-            <button onclick="openWeeksArchiveModal()" class="px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700 text-xs font-semibold text-sky-400 flex items-center gap-1 shrink-0">
-              <span>📚</span> Past Weeks Log
-            </button>
-          </div>
+      <!-- Sleek Apple-Health Style Daily Macro Hero Card -->
+      <div id="dailyMacroCard" class="soft-card rounded-3xl p-5 space-y-4">
+        <!-- Populated by JS -->
+      </div>
+
+      <!-- Clean Meal Timeline (Tap any meal to open full Slide-Up Recipe Drawer!) -->
+      <div class="space-y-3">
+        <div class="flex items-center justify-between px-1">
+          <h2 class="text-[11px] font-bold uppercase tracking-wider text-slate-400">Today's Meals (Tap any card for recipe)</h2>
+          <button onclick="openGenerateWeekModal()" class="text-xs font-semibold text-emerald-600 dark:text-emerald-400 hover:underline flex items-center gap-1">
+            <span>✨</span> Refresh Week
+          </button>
         </div>
 
-        <!-- Prep Style & Generate Week Row -->
-        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div>
-            <h2 class="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
-              <span>🔄</span> Daily Protein Rotation: Never the same protein 2 days in a row
-            </h2>
-          </div>
-          <div class="flex items-center gap-2">
-            <select id="prepStyleSelect" onchange="updatePrepStyle(this.value)" class="bg-slate-900 border border-slate-700 rounded-xl px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-emerald-500">
-              <option value="mix">Prep: Mix (Batch + Fresh)</option>
-              <option value="batch">Prep: Batch Cook</option>
-              <option value="fresh">Prep: Fresh Daily</option>
-            </select>
-            <button onclick="openGenerateWeekModal()" class="bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-slate-950 font-semibold text-xs px-3.5 py-2 rounded-xl shadow-md shadow-emerald-500/20 transition flex items-center gap-1.5 shrink-0">
-              <span>✨</span> Generate New Week
-            </button>
-          </div>
-        </div>
-
-        <!-- 7-Day Selector Pills (with Actual Dates) -->
-        <div id="daySelectorRow" class="flex items-center gap-1.5 overflow-x-auto no-scrollbar pt-1 pb-1">
+        <div id="dayMealsContainer" class="space-y-3">
           <!-- Populated by JS -->
         </div>
       </div>
 
-      <!-- Daily Macro Dashboard Card -->
-      <div id="dailyMacroCard" class="glass-card rounded-2xl p-4 shadow-xl">
-        <!-- Populated by JS -->
-      </div>
-
-      <!-- Meals List for Selected Day -->
-      <div id="dayMealsContainer" class="space-y-3.5">
-        <!-- Populated by JS -->
-      </div>
-
     </section>
 
-    <!-- ================= TAB 2: ON-DEMAND GENERATOR & YUMMY MOVIE TREAT FINDER ================= -->
+    <!-- ================= TAB 2: CRAVINGS (QUICK MEAL, MOVIE TREAT & FAVORITES) ================= -->
     <section id="tab-generator" class="hidden space-y-4">
 
-      <!-- Mode Switcher: Meal/Snack vs. Yummy Movie Treat Craving -->
-      <div class="grid grid-cols-2 gap-2 bg-slate-900/90 p-1.5 rounded-2xl border border-slate-800">
-        <button onclick="switchGeneratorSubMode('meal')" id="submodeBtnMeal" class="py-2.5 px-3 rounded-xl text-xs font-bold bg-emerald-500 text-slate-950 shadow transition flex items-center justify-center gap-1.5">
-          <span>🍳</span> Quick Meal / Snack Generator
+      <!-- 3-Way Segmented Control: Quick Meal | Movie Treat | Favorites -->
+      <div class="soft-card rounded-2xl p-1.5 grid grid-cols-3 gap-1">
+        <button onclick="switchGeneratorSubMode('meal')" id="submodeBtnMeal" class="py-2 px-2 rounded-xl text-xs font-bold bg-slate-900 dark:bg-emerald-500 text-white dark:text-slate-950 shadow-sm transition">
+          🍳 Quick Meal
         </button>
-        <button onclick="switchGeneratorSubMode('treat')" id="submodeBtnTreat" class="py-2.5 px-3 rounded-xl text-xs font-bold text-amber-300 hover:bg-slate-800 transition flex items-center justify-center gap-1.5">
-          <span>🍿</span> Yummy Movie / Craving Treat
+        <button onclick="switchGeneratorSubMode('treat')" id="submodeBtnTreat" class="py-2 px-2 rounded-xl text-xs font-semibold text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white transition">
+          🍿 Movie Treat
+        </button>
+        <button onclick="switchGeneratorSubMode('favorites')" id="submodeBtnFavs" class="py-2 px-2 rounded-xl text-xs font-semibold text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white transition">
+          ⭐ Favorites
         </button>
       </div>
 
       <!-- SUB-MODE 1: STANDARD MEAL / SNACK GENERATOR -->
-      <div id="genMealBox" class="glass-card rounded-2xl p-5 shadow-xl space-y-4">
+      <div id="genMealBox" class="soft-card rounded-3xl p-5 space-y-4">
         <div>
-          <h2 class="text-base font-bold text-white flex items-center gap-2">
-            <span>⚡</span> On-Demand Single Meal / Snack Generator
-          </h2>
-          <p class="text-xs text-slate-400 mt-1">
-            Automatically scaled to your active macro profile (<span id="genMacroSummaryText" class="text-emerald-400 font-semibold">1,800 kcal</span>). Strictly obeys your No-Pork, Shrimp/Tilapia-only seafood, and Exclusion list rules.
+          <h2 class="text-base font-bold">On-Demand Meal & Snack Chef</h2>
+          <p class="text-xs text-slate-400 mt-0.5">
+            Scaled to your <span id="genMacroSummaryText" class="text-emerald-600 dark:text-emerald-400 font-semibold">1,800 kcal</span> goal. Always Halal-friendly, No Pork, Shrimp/Tilapia only.
           </p>
         </div>
 
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3.5 pt-1">
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
-            <label class="block text-xs font-medium text-slate-300 mb-1">1. Meal or Snack Type</label>
-            <select id="genSlot" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2.5 text-sm text-white focus:border-emerald-500 focus:outline-none">
-              <option value="Meal 1 (First Meal - Lighter)">Meal 1: First Meal / Lunch (~27% of Daily Calories)</option>
-              <option value="Meal 2 (Dinner - Hearty Main)">Meal 2: Dinner / Hearty Main (~48% of Daily Calories)</option>
-              <option value="Snack 1">Healthy Daily Snack (~12.5% of Daily Calories)</option>
+            <label class="block text-[11px] font-semibold text-slate-400 mb-1">Meal Type</label>
+            <select id="genSlot" class="w-full soft-input rounded-xl px-3 py-2.5 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500">
+              <option value="Meal 1 (First Meal - Lighter)">Meal 1: First Meal / Lunch (~27%)</option>
+              <option value="Meal 2 (Dinner - Hearty Main)">Meal 2: Hearty Dinner (~48%)</option>
+              <option value="Snack 1">Healthy Daily Snack (~12.5%)</option>
             </select>
           </div>
 
           <div>
-            <label class="block text-xs font-medium text-slate-300 mb-1">2. Primary Protein</label>
-            <select id="genProtein" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2.5 text-sm text-white focus:border-emerald-500 focus:outline-none">
-              <option value="Any Approved">Surprise Me (Any Approved Protein)</option>
-              <option value="Chicken">Halal Chicken (Breast or Thighs)</option>
-              <option value="Beef">Halal Beef (Steak, Kafta, Lean Ground)</option>
+            <label class="block text-[11px] font-semibold text-slate-400 mb-1">Primary Protein</label>
+            <select id="genProtein" class="w-full soft-input rounded-xl px-3 py-2.5 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500">
+              <option value="Any Approved">Surprise Me (Any Approved)</option>
+              <option value="Chicken">Halal Chicken</option>
+              <option value="Beef">Halal Beef (Steak / Kafta)</option>
               <option value="Shrimp">Shrimp</option>
               <option value="Tilapia">Tilapia</option>
-              <option value="Eggs & Dairy">Eggs / Labneh / Greek Yogurt</option>
+              <option value="Eggs & Dairy">Eggs / Labneh / Yogurt</option>
               <option value="Turkey">Halal Turkey</option>
             </select>
           </div>
 
           <div>
-            <label class="block text-xs font-medium text-slate-300 mb-1">3. Cuisine / Flavor Vibe</label>
-            <select id="genCuisine" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2.5 text-sm text-white focus:border-emerald-500 focus:outline-none">
-              <option value="Arabic / Mediterranean">Arabic / Middle Eastern (Shawarma, Kafta, Harissa)</option>
-              <option value="Mexican / Southwest">Mexican / Southwest (Fajita, Chipotle, Tacos)</option>
-              <option value="Asian / Stir-Fry">Asian / Stir-Fry (Garlic Honey, Szechuan, Teriyaki)</option>
-              <option value="American / Steakhouse">American / Grillhouse (Cajun, Garlic Butter, BBQ)</option>
-              <option value="Sweet High-Protein">Sweet High-Protein (Berries, Churro, Chocolate PB)</option>
+            <label class="block text-[11px] font-semibold text-slate-400 mb-1">Cuisine Vibe</label>
+            <select id="genCuisine" class="w-full soft-input rounded-xl px-3 py-2.5 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500">
+              <option value="Arabic / Mediterranean">Arabic / Mediterranean</option>
+              <option value="Mexican / Southwest">Mexican / Southwest</option>
+              <option value="Asian / Stir-Fry">Asian / Stir-Fry</option>
+              <option value="American / Steakhouse">Grillhouse / Cajun</option>
+              <option value="Sweet High-Protein">Sweet High-Protein</option>
             </select>
           </div>
 
           <div>
-            <label class="block text-xs font-medium text-slate-300 mb-1">4. Appliance & Max Time</label>
-            <select id="genAppliance" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2.5 text-sm text-white focus:border-emerald-500 focus:outline-none">
+            <label class="block text-[11px] font-semibold text-slate-400 mb-1">Appliance & Time</label>
+            <select id="genAppliance" class="w-full soft-input rounded-xl px-3 py-2.5 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500">
               <option value="Air Fryer (Under 15 mins)">Air Fryer (Under 15 mins)</option>
               <option value="Stovetop Skillet (Under 15 mins)">Stovetop Skillet (Under 15 mins)</option>
-              <option value="Instant Pot / Pressure Cooker">Instant Pot / Pressure Cooker</option>
+              <option value="Instant Pot / Pressure Cooker">Instant Pot</option>
               <option value="Grill (Indoor/Outdoor)">Grill</option>
-              <option value="No-Cook (Under 5 mins)">No-Cook Assembly (Under 5 mins)</option>
+              <option value="No-Cook (Under 5 mins)">No-Cook (Under 5 mins)</option>
             </select>
           </div>
         </div>
 
         <div>
-          <label class="block text-xs font-medium text-slate-300 mb-1">5. Optional Specific Craving or Ingredient Note</label>
-          <input id="genCustomNote" type="text" placeholder="e.g., extra spicy, crispy potatoes, use pita bread..." class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white placeholder-slate-500 focus:border-emerald-500 focus:outline-none" />
+          <input id="genCustomNote" type="text" placeholder="Optional note (e.g., extra spicy, crispy potatoes, pita)..." class="w-full soft-input rounded-xl px-3.5 py-2.5 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500" />
         </div>
 
-        <button onclick="generateSingleMeal()" id="btnGenerateSingle" class="w-full bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-slate-950 font-bold text-sm py-3 rounded-xl shadow-lg shadow-emerald-500/20 transition flex items-center justify-center gap-2">
-          <span>🔥</span> Generate Custom Recipe & Step-by-Step Guide
+        <button onclick="generateSingleMeal()" id="btnGenerateSingle" class="w-full bg-slate-900 dark:bg-emerald-500 hover:opacity-95 text-white dark:text-slate-950 font-bold text-xs py-3.5 rounded-2xl shadow-md transition">
+          🔥 Generate Recipe
         </button>
       </div>
 
       <!-- SUB-MODE 2: YUMMY MOVIE / CRAVING TREAT WIZARD -->
-      <div id="genTreatBox" class="hidden glass-card rounded-2xl p-5 shadow-xl space-y-4 border border-amber-500/30">
+      <div id="genTreatBox" class="hidden soft-card rounded-3xl p-5 space-y-4">
         <div>
-          <span class="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-amber-500/20 text-amber-300">
-            Guilt-Free Craving Solver
+          <span class="text-[10px] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-amber-500/15 text-amber-600 dark:text-amber-400">
+            Movie Night Craving Solver
           </span>
-          <h2 class="text-base font-bold text-white flex items-center gap-2 mt-1">
-            <span>🍿</span> Yummy Movie / Late-Night Treat Finder
-          </h2>
+          <h2 class="text-base font-bold mt-1.5">🍿 Yummy Movie Treat Finder</h2>
           <p class="text-xs text-slate-400 mt-0.5">
-            Watching a movie or craving something delicious? Answer 4 quick questions below—choose <strong>Make at Home</strong> (for a step-by-step recipe) or <strong>Buy In-Store</strong> (for 3 ready-to-eat options & where to buy them in Canton/Westland!).
+            Make a quick guilt-free treat at home OR see the top 3 ready-to-buy snacks at Canton/Westland stores.
           </p>
         </div>
 
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
-            <label class="block text-xs font-bold text-amber-300 mb-1">1. Are you in the mood for Sweet or Savory?</label>
-            <select id="treatTaste" onchange="updateTreatVibeOptions()" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2.5 text-sm text-white focus:border-amber-500 focus:outline-none">
+            <label class="block text-[11px] font-semibold text-slate-400 mb-1">1. Sweet or Savory?</label>
+            <select id="treatTaste" onchange="updateTreatVibeOptions()" class="w-full soft-input rounded-xl px-3 py-2.5 text-xs font-medium">
               <option value="sweet">🍫 Sweet & Indulgent</option>
               <option value="savory">🧀 Savory, Crunchy & Salty</option>
               <option value="sweet_salty">🥨 Sweet & Salty Combo</option>
@@ -246,486 +219,402 @@
           </div>
 
           <div>
-            <label class="block text-xs font-bold text-amber-300 mb-1">2. What flavor or texture sounds best?</label>
-            <select id="treatVibe" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2.5 text-sm text-white focus:border-amber-500 focus:outline-none">
-              <option value="chocolate_pb">Rich Chocolate / Peanut Butter</option>
-              <option value="ice_cream">Cold & Creamy (Ice Cream / Cheesecake Vibe)</option>
-              <option value="warm_bakery">Warm & Cozy (Brownie / Churro / Cookie)</option>
-              <option value="fruity">Fruity, Tangy & Refreshing</option>
+            <label class="block text-[11px] font-semibold text-slate-400 mb-1">2. Flavor / Texture Vibe</label>
+            <select id="treatVibe" class="w-full soft-input rounded-xl px-3 py-2.5 text-xs font-medium">
+              <option value="chocolate_pb">Rich Chocolate & Peanut Butter</option>
+              <option value="ice_cream">Cold & Creamy (Ice Cream / Cheesecake)</option>
+              <option value="warm_bakery">Warm & Cozy (Brownie / Churro)</option>
+              <option value="fruity">Fruity & Refreshing</option>
             </select>
           </div>
 
           <div>
-            <label class="block text-xs font-bold text-amber-300 mb-1">3. Calorie Target for This Treat?</label>
-            <select id="treatCalories" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2.5 text-sm text-white focus:border-amber-500 focus:outline-none">
-              <option value="180">Light Treat (~150–200 kcal, High Protein)</option>
-              <option value="260" selected>Movie-Night Treat (~240–280 kcal, High Protein)</option>
-              <option value="350">Hearty Indulgence (~320–380 kcal, High Protein)</option>
+            <label class="block text-[11px] font-semibold text-slate-400 mb-1">3. Calorie Target</label>
+            <select id="treatCalories" class="w-full soft-input rounded-xl px-3 py-2.5 text-xs font-medium">
+              <option value="180">Light Treat (~150–200 kcal)</option>
+              <option value="260" selected>Movie-Night Treat (~240–280 kcal)</option>
+              <option value="350">Hearty Indulgence (~320–380 kcal)</option>
             </select>
           </div>
 
           <div>
-            <label class="block text-xs font-bold text-emerald-400 mb-1">4. Make at Home or Buy In-Store?</label>
-            <select id="treatSource" class="w-full bg-slate-900 border border-emerald-500/50 rounded-xl px-3 py-2.5 text-sm font-semibold text-white focus:border-emerald-500 focus:outline-none">
-              <option value="home">👨‍🍳 Make it at Home (Give me Recipe & Steps)</option>
-              <option value="store">🛒 Buy In-Store (Give me 3 Options & Where to Buy)</option>
+            <label class="block text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 mb-1">4. Make at Home or Buy In-Store?</label>
+            <select id="treatSource" class="w-full soft-input rounded-xl px-3 py-2.5 text-xs font-bold">
+              <option value="home">👨‍🍳 Make at Home (Recipe & Steps)</option>
+              <option value="store">🛒 Buy In-Store (3 Options & Canton Store)</option>
             </select>
           </div>
         </div>
 
-        <button onclick="generateYummyTreat()" class="w-full bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950 font-extrabold text-sm py-3 rounded-xl shadow-lg shadow-amber-500/20 transition flex items-center justify-center gap-2">
-          <span>🍿</span> Find My Perfect Movie Treat!
+        <button onclick="generateYummyTreat()" class="w-full bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs py-3.5 rounded-2xl shadow-md transition">
+          🍿 Find My Movie Treat
         </button>
       </div>
 
+      <!-- SUB-MODE 3: STARRED FAVORITES & ANTI-REPETITION MEMORY -->
+      <div id="genFavoritesBox" class="hidden space-y-4">
+        <div class="soft-card rounded-3xl p-5 space-y-2">
+          <h2 class="text-base font-bold">⭐ Starred Favorites Cookbook</h2>
+          <p class="text-xs text-slate-400">
+            Tap the Star button inside any recipe sheet to save your favorite meals here for 1-tap insertion into any week.
+          </p>
+        </div>
+
+        <div id="favoritesContainer" class="space-y-3"></div>
+
+        <details class="soft-card rounded-3xl p-4">
+          <summary class="cursor-pointer text-xs font-bold text-slate-500 flex items-center justify-between">
+            <span>🕒 View Anti-Repetition Meal Memory Log</span>
+            <span>▼</span>
+          </summary>
+          <div class="pt-3 space-y-2">
+            <div class="flex items-center justify-between">
+              <p class="text-[11px] text-slate-400">The AI avoids repeating these recent meals when generating new weeks.</p>
+              <button onclick="clearHistoryLog()" class="text-[11px] text-rose-500 underline">Reset</button>
+            </div>
+            <div id="historyTagsContainer" class="flex flex-wrap gap-1.5"></div>
+          </div>
+        </details>
+      </div>
+
       <!-- Output Container for Generated Single Recipe or Treat -->
-      <div id="generatedSingleResult" class="space-y-4"></div>
+      <div id="generatedSingleResult" class="space-y-3"></div>
     </section>
 
     <!-- ================= TAB 3: CANTON/WESTLAND SHOPPING LIST ================= -->
     <section id="tab-shopping" class="hidden space-y-4">
-      <div class="glass-card rounded-2xl p-4 shadow-xl space-y-3">
-        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+      <div class="soft-card rounded-3xl p-5 space-y-4">
+        <div class="flex items-center justify-between gap-2">
           <div>
-            <div class="flex items-center gap-2">
-              <h2 class="text-base font-bold text-white flex items-center gap-1.5">
-                <span>🛒</span> Smart Canton & Westland Grocery List
-              </h2>
-              <span class="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
-                ✓ Live Synced to 7-Day Plan
-              </span>
-            </div>
-            <p class="text-xs text-slate-400 mt-0.5">
-              Automatically pulls all ingredients (plus any active 🌶️ Flavor Upgrades) from <span id="shoppingWeekLabel" class="text-emerald-400 font-semibold">this week's 7-day plan</span>. Swapping a meal in your 7-day plan immediately updates this list!
+            <h2 class="text-base font-bold">Canton & Westland Groceries</h2>
+            <p class="text-xs text-slate-400">
+              Live-synced to <span id="shoppingWeekLabel" class="text-emerald-600 dark:text-emerald-400 font-semibold">this week's plan</span>
             </p>
           </div>
-          <div class="flex items-center gap-2 shrink-0">
-            <button onclick="resetCheckedGroceries()" class="text-xs px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition">
-              Uncheck All
+          <div class="flex items-center gap-1.5">
+            <button onclick="resetCheckedGroceries()" class="text-xs px-3 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-500 font-medium">
+              Reset
             </button>
-            <button onclick="shareShoppingListText()" class="text-xs px-3 py-1.5 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 font-medium transition">
-              📤 Copy / Share to Wife
+            <button onclick="shareShoppingListText()" class="text-xs px-3.5 py-2 rounded-xl bg-emerald-600 text-white font-semibold shadow-sm">
+              📤 Share
             </button>
           </div>
-        </div>
-
-        <!-- Custom Grocery Item Adder -->
-        <div class="flex flex-col sm:flex-row gap-2 pt-2 border-t border-slate-800">
-          <input id="customGroceryItem" type="text" placeholder="Add extra household item (e.g., Almond milk, paper towels)..." class="flex-1 bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-500 focus:border-emerald-500 focus:outline-none" />
-          <select id="customGroceryStore" class="bg-slate-900 border border-slate-700 rounded-xl px-2.5 py-2 text-xs text-slate-200 focus:border-emerald-500 focus:outline-none">
-            <option value="Joe Randazzo's (Westland)">🥬 Joe Randazzo's (Westland)</option>
-            <option value="Greenland Market / Papaya (Canton)">🥩 Greenland / Papaya (Canton)</option>
-            <option value="Costco / Sam's Club (Canton)">📦 Costco / Sam's Club (Canton)</option>
-            <option value="Walmart / Meijer / Kroger / Target (Canton)">🛒 Walmart / Meijer / Kroger / Target</option>
-          </select>
-          <button onclick="addCustomGroceryItem()" class="bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-semibold text-xs px-4 py-2 rounded-xl transition shrink-0">
-            + Add Item
-          </button>
         </div>
 
         <!-- Store Filter Pills -->
-        <div id="storeFilterRow" class="flex items-center gap-1.5 overflow-x-auto no-scrollbar pt-1">
-          <!-- Populated by JS -->
+        <div id="storeFilterRow" class="flex items-center gap-1.5 overflow-x-auto no-scrollbar"></div>
+
+        <!-- Quick Add Extra Item -->
+        <div class="flex gap-2 pt-2 border-t border-slate-100 dark:border-slate-800/80">
+          <input id="customGroceryItem" type="text" placeholder="Add extra item (e.g., Almond milk)..." class="flex-1 soft-input rounded-xl px-3 py-2 text-xs focus:outline-none" />
+          <select id="customGroceryStore" class="soft-input rounded-xl px-2 py-2 text-xs max-w-[130px]">
+            <option value="Joe Randazzo's (Westland)">🥬 Randazzo's</option>
+            <option value="Greenland Market / Papaya (Canton)">🥩 Greenland</option>
+            <option value="Costco / Sam's Club (Canton)">📦 Costco</option>
+            <option value="Walmart / Meijer / Kroger / Target (Canton)">🛒 Walmart/Meijer</option>
+          </select>
+          <button onclick="addCustomGroceryItem()" class="bg-slate-900 dark:bg-emerald-500 text-white dark:text-slate-950 font-bold text-xs px-3.5 py-2 rounded-xl shrink-0">
+            + Add
+          </button>
         </div>
       </div>
 
-      <div id="shoppingListContainer" class="space-y-4">
-        <!-- Populated by JS -->
-      </div>
+      <div id="shoppingListContainer" class="space-y-3"></div>
     </section>
 
-    <!-- ================= TAB 4: FAVORITES & ARCHIVE ================= -->
-    <section id="tab-favorites" class="hidden space-y-4">
-      <div class="glass-card rounded-2xl p-4 shadow-xl space-y-2">
-        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+    <!-- ================= TAB 4: MO'S CLEAN PROFILE, BODY COMP & CLINICAL ENGINE ================= -->
+    <section id="tab-profile" class="hidden space-y-4">
+
+      <!-- Card 1: Clean Body Composition Summary & Goal Calculator -->
+      <div class="soft-card rounded-3xl p-5 space-y-4">
+        <div class="flex items-center justify-between">
           <div>
-            <h2 class="text-base font-bold text-white flex items-center gap-2">
-              <span>⭐</span> Your Starred Favorites Cookbook
-            </h2>
-            <p class="text-xs text-slate-300 mt-1">
-              <strong>What is this for?</strong> Whenever you eat a meal or snack that you love, tap the <strong>☆ Star</strong> button on that recipe card. It saves a permanent copy here so you never lose it when generating new weeks—and you can click <strong>"+ Add to Week Plan"</strong> to drop any favorite into any day of your week in 1 click!
-            </p>
+            <h2 class="text-base font-bold">Mo's Body Profile & Goal</h2>
+            <p class="text-xs text-slate-400">5'7" • Age 42 • Dietitian Verified Plan</p>
           </div>
-          <button onclick="openWeeksArchiveModal()" class="px-3.5 py-2 rounded-xl bg-sky-500/20 hover:bg-sky-500/30 border border-sky-500/40 text-xs font-bold text-sky-300 shrink-0">
-            📚 Browse Past Weeks by Date
-          </button>
-        </div>
-      </div>
-
-      <div id="favoritesContainer" class="space-y-3.5">
-        <!-- Populated by JS -->
-      </div>
-
-      <div class="glass-card rounded-2xl p-4 shadow-xl space-y-3">
-        <div class="flex items-start justify-between gap-2">
-          <div>
-            <h3 class="text-sm font-bold text-white flex items-center gap-1.5">
-              <span>🕒</span> Anti-Repetition Meal Memory Log
-            </h3>
-            <p class="text-xs text-slate-300 mt-1">
-              <strong>How does this work?</strong> Every time a week is generated or you swap a meal, the app automatically logs that meal and its date here. When you click <strong>"Generate New Week"</strong> for future weeks, the AI checks this list so it <strong>doesn't repeat the same meals week after week</strong>!
-            </p>
-          </div>
-          <button onclick="clearHistoryLog()" class="text-xs text-rose-400 hover:text-rose-300 underline shrink-0">Reset Memory</button>
-        </div>
-        <div id="historyTagsContainer" class="flex flex-wrap gap-1.5 pt-1">
-          <!-- Populated by JS -->
-        </div>
-      </div>
-    </section>
-
-    <!-- ================= TAB 5: MO'S STREAMLINED PROFILE, BODY COMP & SCIENTIFIC MACRO ENGINE ================= -->
-    <section id="tab-profile" class="hidden space-y-5">
-
-      <!-- SECTION A: ACTIVE DAILY CALORIE & MACRO TARGETS (Dietitian Baseline + Editable) -->
-      <div class="glass-card rounded-2xl p-5 shadow-xl space-y-4 border-l-4 border-l-emerald-500">
-        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-          <div>
-            <div class="flex flex-wrap items-center gap-2">
-              <span class="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300">
-                Active Meal Prep Generator Targets
-              </span>
-              <span class="text-[10px] font-semibold px-2 py-0.5 rounded bg-sky-500/15 text-sky-300 border border-sky-500/30">
-                ✓ Dietitian Verified Baseline: 1,800 kcal
-              </span>
-            </div>
-            <h2 class="text-base font-bold text-white mt-1.5">
-              🎯 Your Active Daily Caloric Intake & Macros
-            </h2>
-            <p class="text-xs text-slate-400">
-              These numbers dictate every meal and portion size generated across the app. You can edit them directly below or compare them with the Scientific Body-Composition Calculator in Section B.
-            </p>
-          </div>
-        </div>
-
-        <div class="grid grid-cols-2 sm:grid-cols-5 gap-3">
-          <div class="bg-slate-900/90 p-2.5 rounded-xl border border-slate-800">
-            <label class="block text-[11px] text-slate-400 mb-1">Daily Calories (kcal)</label>
-            <input id="setCalories" type="number" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-sm font-extrabold text-white focus:border-emerald-500 focus:outline-none" />
-          </div>
-          <div class="bg-slate-900/90 p-2.5 rounded-xl border border-slate-800">
-            <label class="block text-[11px] text-slate-400 mb-1">Protein (g)</label>
-            <input id="setProtein" type="number" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-sm font-extrabold text-emerald-400 focus:border-emerald-500 focus:outline-none" />
-          </div>
-          <div class="bg-slate-900/90 p-2.5 rounded-xl border border-slate-800">
-            <label class="block text-[11px] text-slate-400 mb-1">Carbs (g)</label>
-            <input id="setCarbs" type="number" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-sm font-extrabold text-sky-400 focus:border-emerald-500 focus:outline-none" />
-          </div>
-          <div class="bg-slate-900/90 p-2.5 rounded-xl border border-slate-800">
-            <label class="block text-[11px] text-slate-400 mb-1">Fat (g)</label>
-            <input id="setFat" type="number" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-sm font-extrabold text-amber-400 focus:border-emerald-500 focus:outline-none" />
-          </div>
-          <div class="bg-slate-900/90 p-2.5 rounded-xl border border-slate-800">
-            <label class="block text-[11px] text-slate-400 mb-1">Fiber (g)</label>
-            <input id="setFiber" type="number" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-sm font-extrabold text-purple-400 focus:border-emerald-500 focus:outline-none" />
-          </div>
-        </div>
-
-        <div class="flex flex-wrap items-center justify-between gap-2 pt-1">
-          <button onclick="resetDefaultMacros()" class="text-xs text-slate-400 hover:text-white underline">
-            Reset to Dietitian Baseline (1,800 kcal / 135P / 156C / 70F / 35Fib)
-          </button>
-          <button onclick="saveManualMacroTargetsAndPromptRescale()" class="bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs px-4 py-2.5 rounded-xl shadow-md transition">
-            💾 Apply Edited Macros & Update Meal Plan
-          </button>
-        </div>
-      </div>
-
-      <!-- SECTION B: STREAMLINED BODY PROFILE, LINKED BF%/WEIGHT GOALS & SCIENTIFIC CALCULATOR -->
-      <div class="glass-card rounded-2xl p-5 shadow-xl space-y-4">
-        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800 pb-3">
-          <div>
-            <h2 class="text-base font-bold text-white flex items-center gap-2">
-              <span>👤</span> Mo's Body Composition Profile & Goal Calculator
-            </h2>
-            <p class="text-xs text-slate-400 mt-0.5">
-              One streamlined place for your stats. Update your Current Weight or Body Fat % here anytime as you progress!
-            </p>
-          </div>
-          <span id="profileAutoSaveBadge" class="text-[10px] font-semibold px-2.5 py-1 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 w-fit">
+          <span id="profileAutoSaveBadge" class="text-[11px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-500/10 px-3 py-1 rounded-full">
             ✓ Saved
           </span>
         </div>
 
-        <!-- Row 1: Personal Stats (Height 5'7", Age 42, Waist with ? helper) -->
-        <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <div>
-            <label class="block text-[11px] font-medium text-slate-300 mb-1">Height (Feet & Inches)</label>
-            <div class="flex gap-1.5">
-              <div class="w-1/2 relative">
-                <input id="profHeightFt" type="number" value="5" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-2.5 py-2 text-xs font-bold text-white" />
-                <span class="absolute right-2 top-2 text-[10px] text-slate-500">ft</span>
-              </div>
-              <div class="w-1/2 relative">
-                <input id="profHeightIn" type="number" value="7" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-2.5 py-2 text-xs font-bold text-white" />
-                <span class="absolute right-2 top-2 text-[10px] text-slate-500">in</span>
-              </div>
-            </div>
+        <!-- Clean 3-Box Stat Highlights -->
+        <div class="grid grid-cols-3 gap-2.5 text-center">
+          <div class="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/40">
+            <div class="text-[10px] font-semibold uppercase text-slate-400">Current</div>
+            <div class="text-base sm:text-lg font-extrabold mt-0.5"><span id="dispCurrWeight">170</span> lbs</div>
+            <div class="text-[11px] text-amber-500 font-semibold"><span id="dispCurrBf">23</span>% BF</div>
           </div>
-
-          <div>
-            <label class="block text-[11px] font-medium text-slate-300 mb-1">Age (Years)</label>
-            <input id="profAge" type="number" value="42" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs font-bold text-white" />
+          <div class="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/40">
+            <div class="text-[10px] font-semibold uppercase text-slate-400">Muscle Mass</div>
+            <div class="text-base sm:text-lg font-extrabold mt-0.5"><span id="dispCurrMuscle">75</span> lbs</div>
+            <div class="text-[11px] text-purple-500 font-semibold">130.9 lb LBM</div>
           </div>
-
-          <div>
-            <label class="block text-[11px] font-medium text-slate-300 mb-1">Baseline Start Weight (lbs)</label>
-            <input id="profStartWeight" type="number" step="0.1" value="170" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs font-bold text-slate-300" />
-          </div>
-
-          <div>
-            <div class="flex items-center justify-between mb-1">
-              <label class="text-[11px] font-medium text-slate-300">Waist (Inches, Optional)</label>
-              <button onclick="toggleWaistHelper()" type="button" class="w-4 h-4 rounded-full bg-sky-500/20 text-sky-300 border border-sky-500/40 text-[10px] font-bold flex items-center justify-center hover:bg-sky-500/30" title="How to measure or estimate your waist">
-                ?
-              </button>
-            </div>
-            <input id="profWaist" type="number" step="0.1" placeholder="Leave blank if unknown" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-500" />
+          <div class="p-3 rounded-2xl bg-emerald-50/70 dark:bg-emerald-500/10 border border-emerald-500/20">
+            <div class="text-[10px] font-semibold uppercase text-emerald-600 dark:text-emerald-400">Target Goal</div>
+            <div class="text-base sm:text-lg font-extrabold mt-0.5"><span id="dispGoalWeight">160</span> lbs</div>
+            <div class="text-[11px] text-emerald-600 dark:text-emerald-400 font-semibold"><span id="dispGoalBf">18.2</span>% BF</div>
           </div>
         </div>
 
-        <!-- Collapsible Waist Measurement Helper Box -->
-        <div id="waistHelperBox" class="hidden bg-slate-950 border border-sky-500/40 rounded-xl p-3.5 text-xs text-slate-300 space-y-1.5">
-          <div class="flex items-center justify-between">
-            <span class="font-bold text-sky-400">📏 How to Measure (or Estimate) Your Waist Circumference:</span>
-            <button onclick="toggleWaistHelper()" class="text-slate-400 hover:text-white">✕</button>
+        <!-- Primary Action: Open Full 4-Step Clinical Formula Audit -->
+        <button onclick="generateScientificMacroRecommendation()" class="w-full py-3.5 rounded-2xl bg-slate-900 dark:bg-emerald-500 text-white dark:text-slate-950 text-xs font-bold shadow-md transition flex items-center justify-center gap-2">
+          <span>🔬</span> View Full Clinical Formula Audit & Dietitian Review
+        </button>
+
+        <!-- Scientific Macro Recommendation & Formula Report Output -->
+        <div id="aiAdvisorRecommendationCard" class="hidden bg-slate-50 dark:bg-slate-950/90 border border-emerald-500/40 rounded-2xl p-4 space-y-3.5"></div>
+
+        <!-- Collapsible Edit Body Stats & Goal Drawer (Keeps main profile super clean!) -->
+        <details class="group pt-2 border-t border-slate-100 dark:border-slate-800/80">
+          <summary class="cursor-pointer py-2 text-xs font-bold text-slate-600 dark:text-slate-300 flex items-center justify-between select-none">
+            <span>✏️ Update Current Weight, Body Fat %, Goal or Activity</span>
+            <span class="text-slate-400 group-open:rotate-180 transition-transform">▼</span>
+          </summary>
+
+          <div class="pt-3 space-y-4">
+            <div class="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+              <div>
+                <label class="block text-[10px] font-semibold text-slate-400 mb-1">Current Weight (lbs)</label>
+                <input id="profCurrentWeight" type="number" step="0.1" value="170" oninput="recalcBodyCompProjections('current')" class="w-full soft-input rounded-xl px-3 py-2 text-xs font-bold" />
+              </div>
+              <div>
+                <label class="block text-[10px] font-semibold text-slate-400 mb-1">Current Body Fat %</label>
+                <input id="profBodyFat" type="number" step="0.1" value="23" oninput="recalcBodyCompProjections('current')" class="w-full soft-input rounded-xl px-3 py-2 text-xs font-bold" />
+              </div>
+              <div>
+                <label class="block text-[10px] font-semibold text-slate-400 mb-1">Muscle Mass (lbs)</label>
+                <input id="profMuscleMass" type="number" step="0.1" value="75" oninput="recalcBodyCompProjections('current')" class="w-full soft-input rounded-xl px-3 py-2 text-xs font-bold" />
+              </div>
+              <div>
+                <div class="flex items-center justify-between mb-1">
+                  <label class="text-[10px] font-semibold text-slate-400">Waist (in, Opt)</label>
+                  <button onclick="toggleWaistHelper()" type="button" class="text-[10px] font-bold text-sky-500 underline">? Help</button>
+                </div>
+                <input id="profWaist" type="number" step="0.1" placeholder="Optional" class="w-full soft-input rounded-xl px-3 py-2 text-xs" />
+              </div>
+            </div>
+
+            <div id="waistHelperBox" class="hidden p-3 rounded-xl bg-sky-50 dark:bg-slate-900 border border-sky-200 dark:border-sky-500/30 text-xs text-slate-600 dark:text-slate-300 space-y-1">
+              <div class="font-bold text-sky-600 dark:text-sky-400">📏 How to Measure Your Waist:</div>
+              <p>Wrap a tape measure horizontally around your bare stomach right at your belly button (or add +2 inches to your US jeans waist size). Leaving it blank is 100% fine!</p>
+            </div>
+
+            <!-- Linked Goal Weight <-> Goal BF% -->
+            <div class="grid grid-cols-3 gap-2.5 pt-1">
+              <div>
+                <label class="block text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 mb-1">Goal Weight (lbs)</label>
+                <input id="profGoalWeight" type="number" step="0.1" value="160" oninput="recalcBodyCompProjections('goalWeight')" class="w-full soft-input rounded-xl px-3 py-2 text-xs font-bold" />
+              </div>
+              <div>
+                <label class="block text-[10px] font-semibold text-amber-600 dark:text-amber-400 mb-1">Goal Body Fat %</label>
+                <input id="profGoalBodyFat" type="number" step="0.1" value="18.2" oninput="recalcBodyCompProjections('goalBf')" class="w-full soft-input rounded-xl px-3 py-2 text-xs font-bold" />
+              </div>
+              <div>
+                <label class="block text-[10px] font-semibold text-purple-500 mb-1">Est. Goal Muscle</label>
+                <input id="profGoalMuscle" type="text" readonly value="75.0 lbs (46.9%)" class="w-full soft-input rounded-xl px-2.5 py-2 text-xs font-semibold opacity-75" />
+              </div>
+            </div>
+
+            <div id="currentBodyCompSummary" class="text-[11px] text-slate-500 dark:text-slate-400"></div>
+            <div id="goalBodyCompSummary" class="text-[11px] text-slate-500 dark:text-slate-400"></div>
+
+            <!-- Personal Baseline & Activity -->
+            <div class="grid grid-cols-2 sm:grid-cols-4 gap-2.5 pt-1">
+              <div>
+                <label class="block text-[10px] text-slate-400 mb-1">Height (Ft / In)</label>
+                <div class="flex gap-1">
+                  <input id="profHeightFt" type="number" value="5" class="w-1/2 soft-input rounded-xl px-2 py-1.5 text-xs" />
+                  <input id="profHeightIn" type="number" value="7" class="w-1/2 soft-input rounded-xl px-2 py-1.5 text-xs" />
+                </div>
+              </div>
+              <div>
+                <label class="block text-[10px] text-slate-400 mb-1">Age</label>
+                <input id="profAge" type="number" value="42" class="w-full soft-input rounded-xl px-2.5 py-1.5 text-xs" />
+              </div>
+              <div>
+                <label class="block text-[10px] text-slate-400 mb-1">Start Weight</label>
+                <input id="profStartWeight" type="number" step="0.1" value="170" class="w-full soft-input rounded-xl px-2.5 py-1.5 text-xs" />
+              </div>
+              <div>
+                <label class="block text-[10px] text-slate-400 mb-1">Workouts / Wk</label>
+                <select id="profWorkouts" class="w-full soft-input rounded-xl px-2 py-1.5 text-xs">
+                  <option value="0">0–1 days/wk</option>
+                  <option value="3" selected>2–3 days/wk</option>
+                  <option value="4">4–5 days/wk</option>
+                  <option value="6">6+ days/wk</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+              <div>
+                <label class="block text-[10px] text-slate-400 mb-1">Daily Lifestyle Activity</label>
+                <select id="profActivity" class="w-full soft-input rounded-xl px-2.5 py-2 text-xs">
+                  <option value="1.2">Sedentary (Desk job)</option>
+                  <option value="1.375" selected>Lightly Active (Daily movement)</option>
+                  <option value="1.55">Moderately Active</option>
+                  <option value="1.725">Very Active</option>
+                </select>
+              </div>
+              <div>
+                <label class="block text-[10px] text-slate-400 mb-1">Goal Strategy</label>
+                <select id="profGoal" class="w-full soft-input rounded-xl px-2.5 py-2 text-xs font-semibold">
+                  <option value="cut_moderate" selected>Steady Fat Cut (-500 kcal/day • ~1 lb/wk)</option>
+                  <option value="cut_aggressive">Aggressive Cut (-700 kcal/day)</option>
+                  <option value="recomp">Body Recomposition (-300 kcal/day)</option>
+                  <option value="maintain">Maintenance</option>
+                  <option value="lean_bulk">Lean Muscle Gain (+250 kcal)</option>
+                </select>
+              </div>
+            </div>
+
+            <button onclick="saveProfileOnlyAndLogSnapshot()" class="w-full py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs transition">
+              💾 Save Stats & Log Progress Snapshot
+            </button>
           </div>
-          <p>1. <strong>With a Tape Measure:</strong> Stand relaxed, wrap a flexible tape measure horizontally around your bare stomach right at the level of your <strong>belly button (navel)</strong>. Breathe out normally and read the inches.</p>
-          <p>2. <strong>Quick Pants-Size Estimate (If you don't have a tape):</strong> Men's US jeans/pants use "vanity sizing," so your true belly-button waist is typically <strong>your pants waist size + 2 inches</strong> (e.g., if you wear size 32 or 33 pants securely, your true waist at the navel is ~34–35 inches). You can also leave it blank—it is 100% optional!</p>
+        </details>
+
+        <!-- Collapsible Progress History Timeline -->
+        <details class="group pt-2 border-t border-slate-100 dark:border-slate-800/80">
+          <summary class="cursor-pointer py-2 text-xs font-bold text-slate-600 dark:text-slate-300 flex items-center justify-between select-none">
+            <span>📊 View Progress Check-In Timeline</span>
+            <span id="progressDistanceBadge" class="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">10.0 lbs to goal ▼</span>
+          </summary>
+          <div id="progressHistoryList" class="pt-2 space-y-1.5 max-h-48 overflow-y-auto"></div>
+        </details>
+      </div>
+
+      <!-- Card 2: Active Daily Calorie & Macro Targets -->
+      <div class="soft-card rounded-3xl p-5 space-y-3">
+        <div class="flex items-center justify-between">
+          <div>
+            <h3 class="text-sm font-bold">🎯 Active Daily Macro Targets</h3>
+            <p class="text-[11px] text-slate-400">Dictates all generated meals & portion sizes</p>
+          </div>
+          <button onclick="resetDefaultMacros()" class="text-[11px] text-slate-400 hover:text-emerald-500 underline">
+            Reset to 1,800
+          </button>
         </div>
 
-        <!-- Row 2: Current Body Composition vs. Linked Goal Weight & Goal Body Fat % -->
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3.5 pt-2">
-          <!-- Box 1: Current Body Stats -->
-          <div class="bg-slate-900/90 border border-slate-800 rounded-2xl p-3.5 space-y-3">
-            <div class="text-xs font-bold text-emerald-400 uppercase tracking-wider">📍 Current Body Composition</div>
-            <div class="grid grid-cols-3 gap-2.5">
-              <div>
-                <label class="block text-[10px] text-slate-400 mb-1">Current Weight (lbs)</label>
-                <input id="profCurrentWeight" type="number" step="0.1" value="170" oninput="recalcBodyCompProjections('current')" class="w-full bg-slate-950 border border-emerald-500/50 rounded-xl px-2.5 py-2 text-xs font-extrabold text-white" />
-              </div>
-              <div>
-                <label class="block text-[10px] text-slate-400 mb-1">Current Body Fat %</label>
-                <input id="profBodyFat" type="number" step="0.1" value="23" oninput="recalcBodyCompProjections('current')" class="w-full bg-slate-950 border border-amber-500/40 rounded-xl px-2.5 py-2 text-xs font-extrabold text-amber-300" />
-              </div>
-              <div>
-                <label class="block text-[10px] text-slate-400 mb-1">Muscle Mass (lbs)</label>
-                <input id="profMuscleMass" type="number" step="0.1" value="75" oninput="recalcBodyCompProjections('current')" class="w-full bg-slate-950 border border-purple-500/40 rounded-xl px-2.5 py-2 text-xs font-extrabold text-purple-300" />
-              </div>
+        <div class="grid grid-cols-5 gap-2">
+          <div>
+            <label class="block text-[10px] text-slate-400 mb-1">Calories</label>
+            <input id="setCalories" type="number" class="w-full soft-input rounded-xl px-2 py-1.5 text-xs font-extrabold text-center" />
+          </div>
+          <div>
+            <label class="block text-[10px] text-slate-400 mb-1">Protein(g)</label>
+            <input id="setProtein" type="number" class="w-full soft-input rounded-xl px-2 py-1.5 text-xs font-extrabold text-emerald-600 dark:text-emerald-400 text-center" />
+          </div>
+          <div>
+            <label class="block text-[10px] text-slate-400 mb-1">Carbs(g)</label>
+            <input id="setCarbs" type="number" class="w-full soft-input rounded-xl px-2 py-1.5 text-xs font-extrabold text-sky-600 dark:text-sky-400 text-center" />
+          </div>
+          <div>
+            <label class="block text-[10px] text-slate-400 mb-1">Fat(g)</label>
+            <input id="setFat" type="number" class="w-full soft-input rounded-xl px-2 py-1.5 text-xs font-extrabold text-amber-600 dark:text-amber-400 text-center" />
+          </div>
+          <div>
+            <label class="block text-[10px] text-slate-400 mb-1">Fiber(g)</label>
+            <input id="setFiber" type="number" class="w-full soft-input rounded-xl px-2 py-1.5 text-xs font-extrabold text-purple-600 dark:text-purple-400 text-center" />
+          </div>
+        </div>
+
+        <button onclick="saveManualMacroTargetsAndPromptRescale()" class="w-full py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-xs font-bold transition">
+          Apply Edited Macros to Meal Plan
+        </button>
+      </div>
+
+      <!-- Card 3: Food Preferences, Firebase Status & Gemini Key (Clean Accordion) -->
+      <details class="soft-card rounded-3xl p-5 group">
+        <summary class="cursor-pointer text-sm font-bold flex items-center justify-between select-none">
+          <span>⚙️ Food Exclusions, Firebase & Gemini Key</span>
+          <span class="text-slate-400 group-open:rotate-180 transition-transform text-xs">▼</span>
+        </summary>
+
+        <div class="pt-4 space-y-4 text-xs">
+          <!-- Avoid List -->
+          <div class="space-y-2">
+            <label class="font-bold text-rose-500 block">🚫 Strict Exclude / Avoid List</label>
+            <div class="flex gap-2">
+              <input id="newExclusionInput" type="text" placeholder="Add item to avoid..." class="flex-1 soft-input rounded-xl px-3 py-1.5" />
+              <button onclick="addExclusionItem()" class="px-3 py-1.5 rounded-xl bg-rose-500/15 text-rose-500 font-bold">+ Avoid</button>
             </div>
-            <div id="currentBodyCompSummary" class="text-[11px] text-slate-300 bg-slate-950/80 px-3 py-2 rounded-lg border border-slate-800/80">
-              <!-- Populated by JS -->
-            </div>
+            <div id="exclusionTags" class="flex flex-wrap gap-1.5 pt-1"></div>
           </div>
 
-          <!-- Box 2: Target Goal (Set by Goal Weight OR Goal Body Fat %!) -->
-          <div class="bg-slate-900/90 border border-sky-500/30 rounded-2xl p-3.5 space-y-3">
+          <!-- Boost List -->
+          <div class="space-y-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+            <label class="font-bold text-emerald-600 dark:text-emerald-400 block">💚 Favorite Ingredients to Boost</label>
+            <div class="flex gap-2">
+              <input id="newFavIngInput" type="text" placeholder="Add favorite ingredient..." class="flex-1 soft-input rounded-xl px-3 py-1.5" />
+              <button onclick="addFavIngredient()" class="px-3 py-1.5 rounded-xl bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 font-bold">+ Boost</button>
+            </div>
+            <div id="favIngTags" class="flex flex-wrap gap-1.5 pt-1"></div>
+          </div>
+
+          <!-- Gemini API Key & Firebase Status -->
+          <div class="space-y-2 pt-2 border-t border-slate-100 dark:border-slate-800">
             <div class="flex items-center justify-between">
-              <span class="text-xs font-bold text-sky-400 uppercase tracking-wider">🏁 Your Target Goal (Linked)</span>
-              <span class="text-[10px] text-slate-400">Type either Weight OR BF%!</span>
-            </div>
-            <div class="grid grid-cols-3 gap-2.5">
-              <div>
-                <label class="block text-[10px] text-sky-300 mb-1">Goal Weight (lbs)</label>
-                <input id="profGoalWeight" type="number" step="0.1" value="160" oninput="recalcBodyCompProjections('goalWeight')" class="w-full bg-slate-950 border border-sky-500/50 rounded-xl px-2.5 py-2 text-xs font-extrabold text-sky-300" />
-              </div>
-              <div>
-                <label class="block text-[10px] text-amber-300 mb-1">Goal Body Fat %</label>
-                <input id="profGoalBodyFat" type="number" step="0.1" value="18.2" oninput="recalcBodyCompProjections('goalBf')" class="w-full bg-slate-950 border border-amber-500/50 rounded-xl px-2.5 py-2 text-xs font-extrabold text-amber-300" />
-              </div>
-              <div>
-                <label class="block text-[10px] text-purple-300 mb-1">Est. Goal Muscle</label>
-                <input id="profGoalMuscle" type="text" readonly value="75.0 lbs (46.9%)" class="w-full bg-slate-950/60 border border-slate-800 rounded-xl px-2.5 py-2 text-xs font-bold text-purple-300 cursor-not-allowed" title="Automatically calculated assuming 100% muscle preservation via high protein intake" />
-              </div>
-            </div>
-            <div id="goalBodyCompSummary" class="text-[11px] text-slate-300 bg-slate-950/80 px-3 py-2 rounded-lg border border-slate-800/80">
-              <!-- Populated by JS -->
-            </div>
-          </div>
-        </div>
-
-        <!-- Row 3: Activity & Goal Pace -->
-        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
-          <div>
-            <label class="block text-[11px] font-medium text-slate-300 mb-1">Daily Lifestyle Activity</label>
-            <select id="profActivity" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white">
-              <option value="1.2">Sedentary (Desk job, minimal walking)</option>
-              <option value="1.375" selected>Lightly Active (Desk job + daily movement)</option>
-              <option value="1.55">Moderately Active (On feet / active daily)</option>
-              <option value="1.725">Very Active (Physical job / hard daily training)</option>
-            </select>
-          </div>
-          <div>
-            <label class="block text-[11px] font-medium text-slate-300 mb-1">Workouts per Week</label>
-            <select id="profWorkouts" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white">
-              <option value="0">0–1 days / week</option>
-              <option value="3" selected>2–3 days / week</option>
-              <option value="4">4–5 days / week</option>
-              <option value="6">6+ days / week</option>
-            </select>
-          </div>
-          <div>
-            <label class="block text-[11px] font-medium text-emerald-400 mb-1">Fat Loss / Recomp Strategy</label>
-            <select id="profGoal" class="w-full bg-slate-900 border border-emerald-500/50 rounded-xl px-3 py-2 text-xs text-white font-semibold">
-              <option value="cut_moderate" selected>Steady Fat Cut (-500 kcal/day • ~1 lb/wk)</option>
-              <option value="cut_aggressive">Aggressive Fat Cut (-700 kcal/day • ~1.4 lbs/wk)</option>
-              <option value="recomp">Body Recomposition (-300 kcal/day • Lean & Gain)</option>
-              <option value="maintain">Maintenance (0 deficit)</option>
-              <option value="lean_bulk">Lean Muscle Gain (+250 kcal surplus)</option>
-            </select>
-          </div>
-        </div>
-
-        <!-- SEPARATED ACTION BUTTONS (#7): Save Profile Only vs. Run Scientific Macro Recommendation -->
-        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pt-3 border-t border-slate-800">
-          <button onclick="saveProfileOnlyAndLogSnapshot()" class="bg-slate-800 hover:bg-slate-700 text-white border border-slate-600 font-bold text-xs px-4 py-2.5 rounded-xl transition flex items-center justify-center gap-1.5">
-            <span>💾</span> Save Profile & Log Progress Snapshot
-          </button>
-
-          <button onclick="generateScientificMacroRecommendation()" class="bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-slate-950 font-extrabold text-xs px-4 py-2.5 rounded-xl shadow-lg shadow-emerald-500/20 transition flex items-center justify-center gap-1.5">
-            <span>🔬</span> Generate Scientific Calorie & Macro Recommendation
-          </button>
-        </div>
-
-        <!-- Scientific Macro Recommendation & Dietitian Comparison Output Box -->
-        <div id="aiAdvisorRecommendationCard" class="hidden bg-slate-950/95 border-2 border-emerald-500/50 rounded-2xl p-4 space-y-3.5">
-          <!-- Populated dynamically when user clicks Generate Scientific Calorie & Macro Recommendation -->
-        </div>
-
-        <!-- Compact Progress History Snapshots (Auto-populated when you click Save Profile & Log Progress Snapshot) -->
-        <div class="pt-3 border-t border-slate-800/80 space-y-2">
-          <div class="flex items-center justify-between">
-            <span class="text-xs font-bold text-slate-300">📊 Saved Progress Timeline (170 lbs Baseline → 160 lbs Goal)</span>
-            <span id="progressDistanceBadge" class="text-[11px] font-semibold text-emerald-400">10.0 lbs to goal</span>
-          </div>
-          <div id="progressHistoryList" class="space-y-1.5 max-h-44 overflow-y-auto pr-1">
-            <!-- Populated by JS -->
-          </div>
-        </div>
-      </div>
-
-      <!-- SECTION D: AVOID / EXCLUSION LIST & FAVORITE INGREDIENTS -->
-      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <div class="glass-card rounded-2xl p-4 shadow-xl space-y-3">
-          <div>
-            <h3 class="text-sm font-bold text-rose-400 flex items-center gap-1.5">
-              <span>🚫</span> Strict Exclude / Avoid List
-            </h3>
-            <p class="text-[11px] text-slate-400">
-              Pork & non-Shrimp/Tilapia seafood are permanently blocked, plus any items you add here:
-            </p>
-          </div>
-          <div class="flex gap-2">
-            <input id="newExclusionInput" type="text" placeholder="Add disliked item (e.g., Olives)..." class="flex-1 bg-slate-900 border border-slate-700 rounded-xl px-3 py-1.5 text-xs text-white focus:border-rose-500 focus:outline-none" />
-            <button onclick="addExclusionItem()" class="bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/40 text-xs font-semibold px-3 py-1.5 rounded-xl transition">
-              + Avoid
-            </button>
-          </div>
-          <div id="exclusionTags" class="flex flex-wrap gap-1.5 pt-1"></div>
-        </div>
-
-        <div class="glass-card rounded-2xl p-4 shadow-xl space-y-3">
-          <div>
-            <h3 class="text-sm font-bold text-emerald-400 flex items-center gap-1.5">
-              <span>💚</span> Favorite Ingredients to Boost
-            </h3>
-            <p class="text-[11px] text-slate-400">
-              Ingredients you love that the AI should prioritize when creating meals:
-            </p>
-          </div>
-          <div class="flex gap-2">
-            <input id="newFavIngInput" type="text" placeholder="Add favorite (e.g., Labneh, Harissa)..." class="flex-1 bg-slate-900 border border-slate-700 rounded-xl px-3 py-1.5 text-xs text-white focus:border-emerald-500 focus:outline-none" />
-            <button onclick="addFavIngredient()" class="bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 text-xs font-semibold px-3 py-1.5 rounded-xl transition">
-              + Boost
-            </button>
-          </div>
-          <div id="favIngTags" class="flex flex-wrap gap-1.5 pt-1"></div>
-        </div>
-      </div>
-
-      <!-- SECTION E: GOOGLE FIREBASE REAL-TIME DATABASE & GEMINI AI KEY -->
-      <div class="glass-card rounded-2xl p-5 shadow-xl space-y-4">
-        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-          <div>
-            <h3 class="text-base font-bold text-white flex items-center gap-2">
-              <span>☁️</span> Google Firebase Cloud Database & Gemini AI Setup
-            </h3>
-            <p class="text-xs text-slate-400 mt-0.5">
-              Your app is permanently connected to your <strong>Google Firebase Realtime Database</strong> (<code>mo-meal-prep-default-rtdb</code>). Every device that opens your link syncs automatically in real time—no codes or manual buttons needed!
-            </p>
-          </div>
-          <span id="firebaseCardBadge" class="text-[11px] font-bold px-3 py-1 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 shrink-0">
-            ☁️ Firebase Connected
-          </span>
-        </div>
-
-        <div class="space-y-3">
-          <div>
-            <div class="flex items-center justify-between mb-1">
-              <label class="text-xs font-medium text-slate-300">
-                Gemini API Key <a href="https://aistudio.google.com/app/apikey" target="_blank" class="text-emerald-400 underline ml-1">(Get a free key in 1 click here ↗)</a>
-              </label>
-              <button onclick="testGeminiApiKey()" id="btnTestGemini" class="text-[11px] font-bold px-2.5 py-1 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 transition">
-                🧪 Test & Save Gemini Key
+              <label class="font-bold">🤖 Gemini API Key <a href="https://aistudio.google.com/app/apikey" target="_blank" class="text-emerald-500 underline ml-1 font-normal">(Get key ↗)</a></label>
+              <button onclick="testGeminiApiKey()" id="btnTestGemini" class="text-[11px] font-bold px-2.5 py-1 rounded-lg bg-emerald-500/15 text-emerald-600 dark:text-emerald-400">
+                🧪 Test & Save Key
               </button>
             </div>
-            <input id="geminiKeyInput" type="password" placeholder="Paste your AIzaSy... key here" onchange="saveApiAndSyncSettings()" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:border-emerald-500 focus:outline-none" />
+            <input id="geminiKeyInput" type="password" placeholder="Paste AIzaSy... key here" onchange="saveApiAndSyncSettings()" class="w-full soft-input rounded-xl px-3 py-2" />
             <div id="geminiTestStatus" class="hidden mt-1.5 text-xs px-3 py-2 rounded-lg border"></div>
-          </div>
-
-          <div class="pt-3 border-t border-slate-800 flex flex-wrap items-center justify-between gap-2">
-            <div id="syncStatusDetail" class="text-xs text-emerald-400 font-medium">
-              ✓ All changes automatically save & sync across your phone, your wife's phone, and your computer via Google Firebase!
+            <div id="syncStatusDetail" class="text-[11px] text-slate-400 pt-1">
+              ✓ Connected to Google Firebase Realtime Database.
             </div>
-            <div class="flex flex-wrap items-center gap-2">
-              <button onclick="exportBackupJson()" class="text-xs px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-emerald-300 border border-slate-700">
-                💾 Export Backup (.json)
-              </button>
-              <label class="text-xs px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-sky-300 border border-slate-700 cursor-pointer">
+            <div class="flex gap-2 pt-1">
+              <button onclick="exportBackupJson()" class="px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 font-semibold">💾 Export Backup</button>
+              <label class="px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 font-semibold cursor-pointer">
                 📂 Restore Backup
                 <input type="file" accept=".json" onchange="importBackupJson(event)" class="hidden" />
               </label>
             </div>
           </div>
         </div>
-      </div>
+      </details>
 
     </section>
 
   </main>
 
-  <!-- Modal for Swapping a Meal, Generating a Week, or Viewing Past Weeks Archive -->
-  <div id="appModal" class="fixed inset-0 z-50 hidden bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
-    <div id="appModalContent" class="bg-slate-900 border border-slate-700 rounded-2xl max-w-lg w-full p-5 shadow-2xl space-y-4 max-h-[85vh] overflow-y-auto">
+  <!-- SLIDE-UP RECIPE DETAIL DRAWER (Never collapses on iPhone Safari!) -->
+  <div id="recipeDrawerModal" onclick="if(event.target === this) closeRecipeDrawer()" class="fixed inset-0 z-50 hidden bg-slate-950/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4">
+    <div id="recipeDrawerContent" class="bg-white dark:bg-[#131b2e] w-full max-w-lg rounded-t-3xl sm:rounded-3xl p-6 space-y-4 max-h-[88vh] overflow-y-auto shadow-2xl border-t sm:border border-slate-200/80 dark:border-slate-800">
+      <!-- Populated dynamically when user taps any meal card -->
+    </div>
+  </div>
+
+  <!-- General App Modal (Swap Meal, Calendar Archive, Week Refresh) -->
+  <div id="appModal" onclick="if(event.target === this) closeModal()" class="fixed inset-0 z-50 hidden bg-slate-950/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4">
+    <div id="appModalContent" class="bg-white dark:bg-[#131b2e] border-t sm:border border-slate-200 dark:border-slate-800 rounded-t-3xl sm:rounded-3xl max-w-lg w-full p-6 shadow-2xl space-y-4 max-h-[85vh] overflow-y-auto">
     </div>
   </div>
 
   <!-- Toast Notification -->
-  <div id="toastBox" class="fixed bottom-20 left-1/2 -translate-x-1/2 z-50 hidden bg-emerald-500 text-slate-950 font-semibold text-xs px-4 py-2.5 rounded-full shadow-xl">
+  <div id="toastBox" class="fixed bottom-24 left-1/2 -translate-x-1/2 z-50 hidden bg-slate-900 dark:bg-emerald-500 text-white dark:text-slate-950 font-semibold text-xs px-4 py-2.5 rounded-full shadow-xl whitespace-nowrap">
   </div>
 
-  <!-- Bottom Mobile Navigation Bar -->
-  <nav class="fixed bottom-0 inset-x-0 z-40 bg-slate-950/95 backdrop-blur-lg border-t border-slate-800/90 px-2 py-1.5">
-    <div class="max-w-xl mx-auto grid grid-cols-5 gap-1">
-      <button onclick="switchTab('plan')" id="nav-plan" class="flex flex-col items-center justify-center py-1.5 rounded-xl text-emerald-400 bg-emerald-500/10 font-semibold transition">
+  <!-- Sleek Floating 4-Tab Bottom Navigation Pill -->
+  <nav class="fixed bottom-4 inset-x-4 z-40 max-w-md mx-auto bg-white/95 dark:bg-[#131b2e]/95 backdrop-blur-xl border border-slate-200/80 dark:border-slate-800 rounded-3xl px-2 py-1.5 shadow-xl">
+    <div class="grid grid-cols-4 gap-1">
+      <button onclick="switchTab('plan')" id="nav-plan" class="flex flex-col items-center justify-center py-2 px-3 rounded-2xl text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-500/10 font-semibold transition-all">
         <span class="text-base">📅</span>
-        <span class="text-[10px] mt-0.5">Calendar Plan</span>
+        <span class="text-[10px] mt-0.5">Today</span>
       </button>
-      <button onclick="switchTab('generator')" id="nav-generator" class="flex flex-col items-center justify-center py-1.5 rounded-xl text-slate-400 hover:text-slate-200 transition">
-        <span class="text-base">🍿</span>
-        <span class="text-[10px] mt-0.5">Meals & Treats</span>
+      <button onclick="switchTab('generator')" id="nav-generator" class="flex flex-col items-center justify-center py-2 px-3 rounded-2xl text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 font-medium transition-all">
+        <span class="text-base">✨</span>
+        <span class="text-[10px] mt-0.5">Cravings</span>
       </button>
-      <button onclick="switchTab('shopping')" id="nav-shopping" class="flex flex-col items-center justify-center py-1.5 rounded-xl text-slate-400 hover:text-slate-200 transition relative">
+      <button onclick="switchTab('shopping')" id="nav-shopping" class="flex flex-col items-center justify-center py-2 px-3 rounded-2xl text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 font-medium transition-all">
         <span class="text-base">🛒</span>
-        <span class="text-[10px] mt-0.5">Grocery List</span>
+        <span class="text-[10px] mt-0.5">Groceries</span>
       </button>
-      <button onclick="switchTab('favorites')" id="nav-favorites" class="flex flex-col items-center justify-center py-1.5 rounded-xl text-slate-400 hover:text-slate-200 transition">
-        <span class="text-base">⭐</span>
-        <span class="text-[10px] mt-0.5">Favorites/Log</span>
-      </button>
-      <button onclick="switchTab('profile')" id="nav-profile" class="flex flex-col items-center justify-center py-1.5 rounded-xl text-slate-400 hover:text-slate-200 transition">
-        <span class="text-base">📈</span>
-        <span class="text-[10px] mt-0.5">Profile/Progress</span>
+      <button onclick="switchTab('profile')" id="nav-profile" class="flex flex-col items-center justify-center py-2 px-3 rounded-2xl text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 font-medium transition-all">
+        <span class="text-base">👤</span>
+        <span class="text-[10px] mt-0.5">Profile</span>
       </button>
     </div>
   </nav>
