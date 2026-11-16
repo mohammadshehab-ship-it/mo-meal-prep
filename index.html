@@ -63,8 +63,8 @@
 
       <!-- Sync Status Pill -->
       <button onclick="switchTab('profile')" id="syncStatusBtn" class="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-slate-800/90 hover:bg-slate-800 border border-slate-700 text-xs font-medium text-slate-300 transition">
-        <span id="syncDot" class="w-2 h-2 rounded-full bg-emerald-400"></span>
-        <span id="syncText">Profile & Sync</span>
+        <span id="syncDot" class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+        <span id="syncText">☁️ Firebase Live</span>
       </button>
     </div>
   </header>
@@ -643,15 +643,20 @@
         </div>
       </div>
 
-      <!-- SECTION E: WIFE REAL-TIME SYNC & GEMINI AI KEY -->
+      <!-- SECTION E: GOOGLE FIREBASE REAL-TIME DATABASE & GEMINI AI KEY -->
       <div class="glass-card rounded-2xl p-5 shadow-xl space-y-4">
-        <div>
-          <h3 class="text-base font-bold text-white flex items-center gap-2">
-            <span>🔄</span> Wife Real-Time Sync & AI Key Setup
-          </h3>
-          <p class="text-xs text-slate-400 mt-0.5">
-            Connect a free Gemini API key for unlimited custom AI recipe generation, and use a shared Sync Code to stay in sync with your wife's phone.
-          </p>
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <div>
+            <h3 class="text-base font-bold text-white flex items-center gap-2">
+              <span>☁️</span> Google Firebase Cloud Database & Gemini AI Setup
+            </h3>
+            <p class="text-xs text-slate-400 mt-0.5">
+              Your app is permanently connected to your <strong>Google Firebase Realtime Database</strong> (<code>mo-meal-prep-default-rtdb</code>). Every device that opens your link syncs automatically in real time—no codes or manual buttons needed!
+            </p>
+          </div>
+          <span id="firebaseCardBadge" class="text-[11px] font-bold px-3 py-1 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 shrink-0">
+            ☁️ Firebase Connected
+          </span>
         </div>
 
         <div class="space-y-3">
@@ -661,41 +666,23 @@
                 Gemini API Key <a href="https://aistudio.google.com/app/apikey" target="_blank" class="text-emerald-400 underline ml-1">(Get a free key in 1 click here ↗)</a>
               </label>
               <button onclick="testGeminiApiKey()" id="btnTestGemini" class="text-[11px] font-bold px-2.5 py-1 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 transition">
-                🧪 Test Gemini Key
+                🧪 Test & Save Gemini Key
               </button>
             </div>
             <input id="geminiKeyInput" type="password" placeholder="Paste your AIzaSy... key here" onchange="saveApiAndSyncSettings()" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:border-emerald-500 focus:outline-none" />
             <div id="geminiTestStatus" class="hidden mt-1.5 text-xs px-3 py-2 rounded-lg border"></div>
           </div>
 
-          <div class="pt-2 border-t border-slate-800">
-            <label class="block text-xs font-medium text-slate-300 mb-1">
-              Wife & Husband Shared Cloud Sync Code
-            </label>
-            <div class="flex flex-col sm:flex-row gap-2">
-              <input id="syncRoomInput" type="text" placeholder="Click 'Generate Shared Cloud Code' or paste code from spouse..." class="flex-1 bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:border-emerald-500 focus:outline-none" />
-              <button onclick="createNewCloudSyncRoom()" class="bg-sky-500/20 hover:bg-sky-500/30 text-sky-300 border border-sky-500/40 text-xs font-semibold px-3 py-2 rounded-xl transition shrink-0">
-                ⚡ Generate Shared Cloud Code
-              </button>
-              <button onclick="saveApiAndSyncSettings()" class="bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-semibold px-4 py-2 rounded-xl transition shrink-0">
-                Connect & Sync
-              </button>
+          <div class="pt-3 border-t border-slate-800 flex flex-wrap items-center justify-between gap-2">
+            <div id="syncStatusDetail" class="text-xs text-emerald-400 font-medium">
+              ✓ All changes automatically save & sync across your phone, your wife's phone, and your computer via Google Firebase!
             </div>
-            <div id="syncStatusDetail" class="text-[11px] text-slate-400 mt-1.5">
-              Status: Saving automatically on this device. Connect a Shared Cloud Code above to sync live between phones!
-            </div>
-            <div class="flex flex-wrap items-center gap-2 mt-3">
-              <button onclick="pullFromCloudRoom(false)" class="text-xs px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700">
-                ⬇️ Pull Latest from Wife
-              </button>
-              <button onclick="pushToCloudRoom(false)" class="text-xs px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700">
-                ⬆️ Push Updates to Wife
-              </button>
+            <div class="flex flex-wrap items-center gap-2">
               <button onclick="exportBackupJson()" class="text-xs px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-emerald-300 border border-slate-700">
-                💾 Export Full Backup (.json)
+                💾 Export Backup (.json)
               </button>
               <label class="text-xs px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-sky-300 border border-slate-700 cursor-pointer">
-                📂 Restore Backup File
+                📂 Restore Backup
                 <input type="file" accept=".json" onchange="importBackupJson(event)" class="hidden" />
               </label>
             </div>

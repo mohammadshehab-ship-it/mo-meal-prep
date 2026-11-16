@@ -1,5 +1,6 @@
 // Mo Meal Prep - Personal Nutrition, Calendar Archive, Movie Treat Finder, Streamlined Body Comp & Smart Grocery Sync
 const STORAGE_KEY = 'mo_meal_prep_state_v4';
+const FIREBASE_DB_URL = 'https://mo-meal-prep-default-rtdb.firebaseio.com/mo_meal_prep_state.json';
 
 function getMondayOfDate(d = new Date()) {
   const date = new Date(d.getFullYear(), d.getMonth(), d.getDate());
@@ -79,11 +80,12 @@ let state = {
   lastUpdated: Date.now()
 };
 
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
   loadState();
   ensureWeekExists(state.activeWeekMondayISO);
   registerServiceWorker();
   renderAll();
+  await pullFromCloudRoom(true);
   startAutoCloudSyncPolling();
 });
 
@@ -158,7 +160,7 @@ function loadState() {
 function saveState(skipCloud = false) {
   state.lastUpdated = Date.now();
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-  if (!skipCloud && state.profile.syncRoomId) {
+  if (!skipCloud) {
     pushToCloudRoom(true);
   }
 }
@@ -1735,7 +1737,6 @@ function renderProfileAndProgressTab() {
   renderProgressLogsList();
 
   document.getElementById('geminiKeyInput').value = p.geminiApiKey || '';
-  document.getElementById('syncRoomInput').value = p.syncRoomId || '';
 
   const exDiv = document.getElementById('exclusionTags');
   exDiv.innerHTML = p.exclusions.map((item, idx) => `
@@ -2361,181 +2362,147 @@ async function testGeminiApiKey() {
   }
 }
 
-function updateSyncBadge() {
+function updateSyncBadge(status = 'connected') {
   const dot = document.getElementById('syncDot');
   const txt = document.getElementById('syncText');
   const detail = document.getElementById('syncStatusDetail');
+  const cardBadge = document.getElementById('firebaseCardBadge');
   if (!dot || !txt) return;
-  if (state.profile.syncRoomId) {
-    dot.className = 'w-2 h-2 rounded-full bg-sky-400 animate-pulse';
-    txt.textContent = `Wife Sync: ${state.profile.syncRoomId.slice(0, 8)}`;
+
+  if (status === 'locked') {
+    dot.className = 'w-2 h-2 rounded-full bg-amber-400 animate-pulse';
+    txt.textContent = '⚠️ Unlock Firebase Rules';
+    if (cardBadge) {
+      cardBadge.className = 'text-[11px] font-bold px-3 py-1 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40 shrink-0';
+      cardBadge.textContent = '⚠️ Rules Locked (Set .read/.write: true)';
+    }
     if (detail) {
-      detail.innerHTML = `✅ <strong class="text-sky-400">Connected to Shared Sync Code: <code>${state.profile.syncRoomId}</code></strong> — Enter this same code on your wife's phone! Auto-syncs every 15 seconds.`;
+      detail.innerHTML = `⚠️ <span class="text-amber-300">Firebase Database is in Locked Mode. In your Firebase Console → <strong>Rules</strong> tab, change <code>false</code> to <code>true</code> for both <code>.read</code> and <code>.write</code> and click <strong>Publish</strong>!</span>`;
     }
   } else {
-    dot.className = 'w-2 h-2 rounded-full bg-emerald-400';
-    txt.textContent = 'Profile & Sync';
+    dot.className = 'w-2 h-2 rounded-full bg-emerald-400 animate-pulse';
+    txt.textContent = '☁️ Firebase Live';
+    if (cardBadge) {
+      cardBadge.className = 'text-[11px] font-bold px-3 py-1 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 shrink-0';
+      cardBadge.textContent = '☁️ Firebase Live Synced';
+    }
     if (detail) {
-      detail.textContent = 'Status: Saving automatically on this device. Click "Generate Shared Cloud Code" above to link your phone and your wife\'s phone!';
+      detail.innerHTML = `✓ <span class="text-emerald-400">Connected to Google Firebase (<code>mo-meal-prep-default-rtdb</code>) — All devices automatically stay in sync in real time!</span>`;
     }
   }
 }
 
 function saveApiAndSyncSettings() {
   state.profile.geminiApiKey = document.getElementById('geminiKeyInput').value.trim();
-  state.profile.syncRoomId = document.getElementById('syncRoomInput').value.trim();
   saveState();
-  updateSyncBadge();
-  showToast('✅ API Key & Sync Code saved!');
-  if (state.profile.syncRoomId) {
-    pullFromCloudRoom(false);
-  }
+  showToast('✅ Gemini API Key saved!');
 }
 
 function getCloudSyncPayload() {
-  // Build a super-compact (<2.5 KB) sync payload so mobile sync is instantaneous and never hits size limits
-  const activeWeek = getActiveWeekObj();
   return {
-    syncVersion: 4,
     profile: {
-      calories: state.profile.calories,
-      protein: state.profile.protein,
-      carbs: state.profile.carbs,
-      fat: state.profile.fat,
-      fiber: state.profile.fiber,
-      prepStyle: state.profile.prepStyle,
-      startWeight: state.profile.startWeight,
-      currentWeight: state.profile.currentWeight,
-      goalWeight: state.profile.goalWeight,
-      goalBodyFatPct: state.profile.goalBodyFatPct,
-      heightFt: state.profile.heightFt,
-      heightIn: state.profile.heightIn,
-      age: state.profile.age,
-      bodyFatPct: state.profile.bodyFatPct,
-      muscleMassLbs: state.profile.muscleMassLbs,
-      waistIn: state.profile.waistIn,
-      exclusions: state.profile.exclusions,
-      favoriteIngredients: state.profile.favoriteIngredients
+      ...state.profile,
+      geminiApiKey: undefined // Keep API key private on local device
     },
+    weeksByStartISO: state.weeksByStartISO,
     activeWeekMondayISO: state.activeWeekMondayISO,
-    // Sync any meal upgrades toggled on in the active week
-    activeUpgrades: (activeWeek?.days || []).map(d => d.meals.map(m => !!m.upgradeApplied)),
-    progressLogs: (state.progressLogs || []).slice(0, 15),
-    favorites: (state.favorites || []).slice(0, 10),
-    checkedGroceries: state.checkedGroceries || {},
-    customGroceries: state.customGroceries || [],
-    lastUpdated: Date.now()
+    progressLogs: state.progressLogs,
+    favorites: state.favorites,
+    mealHistoryLog: state.mealHistoryLog,
+    checkedGroceries: state.checkedGroceries,
+    customGroceries: state.customGroceries,
+    lastUpdated: state.lastUpdated || Date.now()
   };
 }
 
-function getNtfyTopicUrl(roomId, isPoll = false) {
-  const cleanId = String(roomId).trim().toLowerCase().replace(/[^a-z0-9_-]/g, '_');
-  const topic = `mo_meal_prep_sync_${cleanId}`;
-  return isPoll ? `https://ntfy.sh/${topic}/json?poll=1` : `https://ntfy.sh/${topic}`;
-}
+let _isPushingFirebase = false;
 
-async function createNewCloudSyncRoom() {
-  const randomSuffix = Math.random().toString(36).substring(2, 6).toUpperCase();
-  const roomId = `MO-WIFE-${randomSuffix}`;
-  state.profile.syncRoomId = roomId;
-  const inp = document.getElementById('syncRoomInput');
-  if (inp) inp.value = roomId;
-  saveState(true);
-  updateSyncBadge();
-  await pushToCloudRoom(false);
-}
-
-async function pushToCloudRoom(silent = false) {
-  const roomId = (document.getElementById('syncRoomInput')?.value || state.profile.syncRoomId || '').trim();
-  if (!roomId) {
-    if (!silent) showToast('Click "Generate Shared Cloud Code" first!');
-    return;
-  }
-  state.profile.syncRoomId = roomId;
-  updateSyncBadge();
-
+async function pushToCloudRoom(silent = true) {
   try {
+    _isPushingFirebase = true;
     const payload = getCloudSyncPayload();
-    const jsonStr = JSON.stringify(payload);
-    const b64 = btoa(unescape(encodeURIComponent(jsonStr)));
-    const resp = await fetch(getNtfyTopicUrl(roomId, false), {
-      method: 'POST',
-      body: b64
+    const resp = await fetch(FIREBASE_DB_URL, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
     });
-    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-    if (!silent) showToast(`⬆️ Synced to Cloud Code "${roomId}"! Share this code with your wife.`);
-  } catch (e) {
-    if (!silent) showToast('⚠️ Cloud push failed — saved locally on device.');
-  }
-}
-
-async function pullFromCloudRoom(silent = false) {
-  const roomId = (document.getElementById('syncRoomInput')?.value || state.profile.syncRoomId || '').trim();
-  if (!roomId) {
-    if (!silent) showToast('Enter a Shared Cloud Code first!');
-    return;
-  }
-  state.profile.syncRoomId = roomId;
-  updateSyncBadge();
-
-  try {
-    const resp = await fetch(getNtfyTopicUrl(roomId, true));
-    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-    const text = await resp.text();
-    const lines = text.trim().split('\n').filter(Boolean).map(l => {
-      try { return JSON.parse(l); } catch (e) { return null; }
-    }).filter(x => x && x.event === 'message');
-
-    if (lines.length === 0) {
-      if (!silent) showToast('Connected! Pushing initial data to this Sync Code...');
-      await pushToCloudRoom(silent);
+    if (resp.status === 401 || resp.status === 403) {
+      updateSyncBadge('locked');
       return;
     }
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    updateSyncBadge('connected');
+    if (!silent) showToast('☁️ Saved to Google Firebase Database!');
+  } catch (e) {
+    console.warn('Firebase sync note:', e);
+  } finally {
+    setTimeout(() => { _isPushingFirebase = false; }, 600);
+  }
+}
 
-    const latestEvent = lines[lines.length - 1];
-    let rawB64 = latestEvent.message;
-    if (latestEvent.attachment && latestEvent.attachment.url) {
-      const attResp = await fetch(latestEvent.attachment.url);
-      rawB64 = (await attResp.text()).trim();
+function applyRemoteFirebaseState(remote) {
+  if (!remote || !remote.profile) return;
+  const localKey = state.profile.geminiApiKey;
+  state.profile = { ...state.profile, ...remote.profile, geminiApiKey: localKey };
+  if (remote.weeksByStartISO) state.weeksByStartISO = { ...state.weeksByStartISO, ...remote.weeksByStartISO };
+  if (remote.progressLogs) state.progressLogs = remote.progressLogs;
+  if (remote.favorites) state.favorites = remote.favorites;
+  if (remote.mealHistoryLog) state.mealHistoryLog = remote.mealHistoryLog;
+  state.checkedGroceries = remote.checkedGroceries || {};
+  state.customGroceries = remote.customGroceries || [];
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  renderAll();
+}
+
+async function pullFromCloudRoom(silent = true) {
+  try {
+    const resp = await fetch(FIREBASE_DB_URL);
+    if (resp.status === 401 || resp.status === 403) {
+      updateSyncBadge('locked');
+      return;
     }
-
-    const decodedJson = decodeURIComponent(escape(atob(rawB64)));
-    const remote = JSON.parse(decodedJson);
-
-    if (remote && remote.profile) {
-      const localKey = state.profile.geminiApiKey;
-      state.profile = { ...state.profile, ...remote.profile, geminiApiKey: localKey, syncRoomId: roomId };
-      if (remote.progressLogs) state.progressLogs = remote.progressLogs;
-      if (remote.favorites) state.favorites = remote.favorites;
-      state.checkedGroceries = remote.checkedGroceries || {};
-      state.customGroceries = remote.customGroceries || [];
-
-      const activeWeek = getActiveWeekObj();
-      if (remote.activeUpgrades && activeWeek?.days) {
-        activeWeek.days.forEach((d, dIdx) => {
-          d.meals.forEach((m, mIdx) => {
-            if (remote.activeUpgrades[dIdx] && typeof remote.activeUpgrades[dIdx][mIdx] === 'boolean') {
-              m.upgradeApplied = remote.activeUpgrades[dIdx][mIdx];
-            }
-          });
-        });
-      }
-
-      saveState(true);
-      renderAll();
-      if (!silent) showToast(`⬇️ Synced latest updates from "${roomId}"!`);
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    updateSyncBadge('connected');
+    const remote = await resp.json();
+    if (!remote) {
+      // Database is empty on first connect — seed it with current state!
+      await pushToCloudRoom(true);
+      return;
+    }
+    if (remote.lastUpdated && (!state.lastUpdated || remote.lastUpdated >= state.lastUpdated)) {
+      applyRemoteFirebaseState(remote);
     }
   } catch (e) {
-    if (!silent) showToast('⚠️ No cloud updates found yet for this code — pushing your current data now.');
+    console.warn('Firebase pull note:', e);
   }
 }
 
 function startAutoCloudSyncPolling() {
+  // 1. Real-time instant stream via Firebase Server-Sent Events (0.1s sync across phones!)
+  try {
+    if (window.EventSource) {
+      const es = new EventSource(FIREBASE_DB_URL);
+      es.addEventListener('put', (e) => {
+        if (_isPushingFirebase) return;
+        try {
+          const packet = JSON.parse(e.data);
+          if (packet && packet.path === '/' && packet.data && packet.data.profile) {
+            if (!state.lastUpdated || packet.data.lastUpdated > state.lastUpdated) {
+              applyRemoteFirebaseState(packet.data);
+              updateSyncBadge('connected');
+            }
+          }
+        } catch (err) {}
+      });
+    }
+  } catch (e) {}
+
+  // 2. Fallback 6-second poll for mobile background wakeup
   setInterval(() => {
-    if (state.profile.syncRoomId) {
+    if (!_isPushingFirebase) {
       pullFromCloudRoom(true);
     }
-  }, 15000);
+  }, 6000);
 }
 
 function exportBackupJson() {
