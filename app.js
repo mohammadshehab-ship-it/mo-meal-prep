@@ -1,18 +1,20 @@
-// Mo Meal Prep — Sleek Modern UI, Slide-Up Recipe Sheet, Calendar Archive, Movie Treat Finder & Firebase Live Sync
+// Meal Prep Studio — Sleek Modern UI, Slide-Up Recipe Sheet, Calendar Archive, Movie Treat Finder & Firebase Live Sync
 const STORAGE_KEY_PREFIX = 'mo_meal_prep_user_';
 const ACTIVE_USER_SESSION_KEY = 'mo_meal_prep_active_session_v1';
 const FIREBASE_BASE_URL = 'https://mo-meal-prep-default-rtdb.firebaseio.com';
 
-// Current signed-in user session: { username: 'mo', displayName: 'Mo', pin: '7369' }
+// Current signed-in user session: null when logged out
 let currentSession = null;
 
 function getStorageKey() {
-  const u = (currentSession?.username || 'mo').toLowerCase().replace(/[^a-z0-9]/g, '');
+  const u = (currentSession?.username || 'guest').toLowerCase().replace(/[^a-z0-9]/g, '');
   return `${STORAGE_KEY_PREFIX}${u}_v4`;
 }
 
 function getFirebaseUserUrl(usernameOverride = null) {
-  const u = (usernameOverride || currentSession?.username || 'mo').toLowerCase().replace(/[^a-z0-9]/g, '');
+  const raw = usernameOverride || currentSession?.username || '';
+  const u = raw.toLowerCase().replace(/[^a-z0-9]/g, '');
+  if (!u) return null;
   return `${FIREBASE_BASE_URL}/users/${u}.json`;
 }
 
@@ -101,10 +103,18 @@ const currentMondayISO = getMondayOfDate(new Date());
 
 let state = {
   theme: 'light',
-  authPin: '7369',
-  displayName: 'Mo',
+  authPin: '',
+  displayName: 'Guest',
+  weekGenerationSeed: 0,
   profile: {
     ...JSON.parse(JSON.stringify(window.DEFAULT_PROFILE)),
+    onboardingCompleted: false,
+    mealsPerDay: 2,
+    snacksPerDay: 2,
+    selectedCuisines: ['lebanese', 'mediterranean', 'egyptian', 'mexican', 'indian'],
+    dietaryRules: ['halal', 'pork_free'],
+    allergies: [],
+    spiceLevel: 'medium',
     sex: 'male',
     startWeight: 170,
     currentWeight: 170,
@@ -137,8 +147,16 @@ function getFreshDefaultStateForMo() {
     theme: state.theme || 'light',
     authPin: '7369',
     displayName: 'Mo',
+    weekGenerationSeed: 0,
     profile: {
       ...JSON.parse(JSON.stringify(window.DEFAULT_PROFILE)),
+      onboardingCompleted: true,
+      mealsPerDay: 2,
+      snacksPerDay: 2,
+      selectedCuisines: ['lebanese', 'mediterranean', 'egyptian', 'mexican', 'cajun'],
+      dietaryRules: ['halal', 'pork_free'],
+      allergies: [],
+      spiceLevel: 'medium',
       sex: 'male',
       startWeight: 170,
       currentWeight: 170,
@@ -191,8 +209,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     window.location.hash === '#signup';
 
   if (isFamilyInvite) {
-    // Shared invite link ALWAYS opens cleanly on Create Username + Intro Video,
-    // never auto-logging into an existing session (including Mo's).
+    // Shared invite link ALWAYS logs out any active session and opens directly
+    // on the Intro Video + Create Username screen (never inside Mo's profile).
     currentSession = null;
     localStorage.removeItem(ACTIVE_USER_SESSION_KEY);
     startFamilyOnboarding();
@@ -207,8 +225,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   if (!currentSession || !currentSession.username) {
-    // Show Sign-In / Create Username Screen
-    openAuthOverlay('signin');
+    // Default for any logged-out visitor: show the Intro Video + Create Username onboarding screen
+    startFamilyOnboarding();
     return;
   }
 
@@ -219,14 +237,76 @@ async function initializeAuthenticatedApp() {
   if (window.history && window.history.replaceState && window.location.search) {
     window.history.replaceState({}, document.title, window.location.pathname);
   }
-  const overlay = document.getElementById('authOverlay');
-  if (overlay) overlay.classList.add('hidden');
   loadState();
   applyThemeMode();
+
+  // If this user has not completed onboarding yet, guide them to complete it!
+  if (currentSession?.username !== 'mo' && state.profile.onboardingCompleted === false) {
+    const banner = document.getElementById('onboardingIncompleteBanner');
+    if (banner) banner.classList.remove('hidden');
+    resumePendingOnboarding();
+    return;
+  }
+
+  const banner = document.getElementById('onboardingIncompleteBanner');
+  if (banner) banner.classList.add('hidden');
+  const overlay = document.getElementById('authOverlay');
+  if (overlay) overlay.classList.add('hidden');
+
   ensureWeekExists(state.activeWeekMondayISO);
   renderAll();
   await pullFromCloudRoom(true);
   startAutoCloudSyncPolling();
+}
+
+function isOnboardingComplete() {
+  if (currentSession?.username === 'mo') return true;
+  return !!(currentSession?.username && state.profile && state.profile.onboardingCompleted !== false);
+}
+
+function requireOnboardingComplete(actionName = 'generate custom meals') {
+  if (isOnboardingComplete()) return true;
+  openFinishOnboardingPromptModal(actionName);
+  return false;
+}
+
+function openFinishOnboardingPromptModal(actionName = 'generate meals') {
+  const modal = document.getElementById('appModal');
+  const content = document.getElementById('appModalContent');
+  if (!modal || !content) {
+    resumePendingOnboarding();
+    return;
+  }
+  content.innerHTML = `
+    <div class="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+      <div>
+        <span class="text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-500">Onboarding Required</span>
+        <h3 class="text-base font-extrabold mt-1">Complete Your Onboarding First</h3>
+      </div>
+      <button onclick="closeModal()" class="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-500 font-bold">✕</button>
+    </div>
+    <div class="space-y-3.5 text-xs">
+      <p class="text-slate-600 dark:text-slate-300 leading-relaxed">
+        Before you can <strong>${actionName}</strong>, please finish setting up your meal structure, favorite cuisines, dietary rules, and body metrics so the app can calculate your exact daily calories & macros!
+      </p>
+      <button onclick="closeModal(); resumePendingOnboarding();" class="w-full py-3.5 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-xs shadow-lg transition">
+        ✨ Finish My Profile Onboarding Now ▶
+      </button>
+    </div>
+  `;
+  modal.classList.remove('hidden');
+}
+
+function resumePendingOnboarding() {
+  const overlay = document.getElementById('authOverlay');
+  if (overlay) overlay.classList.remove('hidden');
+  if (currentSession?.username && onboardingDraft.step < 2) {
+    onboardingDraft.username = currentSession.username;
+    onboardingDraft.displayName = state.displayName || currentSession.displayName || currentSession.username;
+    onboardingDraft.pin = state.authPin || currentSession.pin || '';
+    onboardingDraft.step = state.profile.onboardingStep || 2;
+  }
+  renderOnboardingStep();
 }
 
 function toggleThemeMode() {
@@ -251,7 +331,6 @@ function loadState() {
   try {
     const key = getStorageKey();
     const savedUser = localStorage.getItem(key);
-    // Also check legacy mo_meal_prep_state_v4 if signing in as Mo for the first time
     const legacyMo = currentSession?.username === 'mo' ? localStorage.getItem('mo_meal_prep_state_v4') : null;
     const rawToLoad = savedUser || legacyMo;
 
@@ -260,7 +339,17 @@ function loadState() {
       state = {
         ...state,
         ...parsed,
-        profile: { ...state.profile, ...(parsed.profile || {}) }
+        profile: {
+          mealsPerDay: 2,
+          snacksPerDay: 2,
+          selectedCuisines: ['lebanese', 'mediterranean', 'egyptian', 'mexican', 'indian'],
+          dietaryRules: ['halal', 'pork_free'],
+          allergies: [],
+          spiceLevel: 'medium',
+          onboardingCompleted: true,
+          ...state.profile,
+          ...(parsed.profile || {})
+        }
       };
     } else if (currentSession?.username === 'mo') {
       state = getFreshDefaultStateForMo();
@@ -269,6 +358,7 @@ function loadState() {
     if (currentSession?.username === 'mo') {
       state.authPin = '7369';
       state.displayName = 'Mo';
+      state.profile.onboardingCompleted = true;
     }
   } catch (e) {
     console.error('Error loading state:', e);
@@ -277,46 +367,412 @@ function loadState() {
 
 function saveState(skipCloud = false) {
   state.lastUpdated = Date.now();
-  localStorage.setItem(getStorageKey(), JSON.stringify(state));
+  if (currentSession?.username) {
+    localStorage.setItem(getStorageKey(), JSON.stringify(state));
+  }
   if (!skipCloud && currentSession?.username) {
     pushToCloudRoom(true);
   }
 }
 
+// Get allowed proteins for the current user based on dietaryRules, allergies & exclusions
+function getApprovedProteinsForProfile(p = state.profile) {
+  const rules = p.dietaryRules || [];
+  const allergies = p.allergies || [];
+  const ex = (p.exclusions || []).map(x => x.toLowerCase());
+
+  const isVegan = rules.includes('vegan');
+  const isVegetarian = rules.includes('vegetarian');
+  const isPescatarian = rules.includes('pescatarian');
+  const noShellfish = allergies.includes('shellfish_free') || rules.includes('kosher');
+  const noFish = allergies.includes('fish_free');
+  const noEggs = allergies.includes('egg_free');
+  const noDairy = allergies.includes('dairy_free');
+  const noSoy = allergies.includes('soy_free');
+
+  if (isVegan) {
+    const list = ['CrispyChickpeas & Lentils', 'Mediterranean Falafel & Beans', 'Spiced Black Beans & Quinoa'];
+    if (!noSoy) list.unshift('Crispy Air-Fried Tofu', 'Marinated Tempeh & Edamame');
+    return list;
+  }
+  if (isVegetarian) {
+    const list = ['Chickpeas & Lentils'];
+    if (!noEggs) list.unshift('Pasture Eggs & Egg Whites');
+    if (!noDairy) list.push('Grilled Halloumi / Paneer', 'Greek Yogurt & Labneh');
+    if (!noSoy) list.push('Crispy Tofu & Edamame');
+    return list;
+  }
+
+  let pool = [];
+  if (!isPescatarian) {
+    pool.push('Chicken', 'Beef', 'Turkey');
+  }
+  if (!noShellfish && !ex.some(e => e.includes('shrimp'))) {
+    pool.push('Shrimp');
+  }
+  if (!noFish) {
+    if (!ex.some(e => e.includes('tilapia'))) pool.push('Tilapia');
+    if (!ex.some(e => e.includes('salmon'))) pool.push('Salmon');
+  }
+  if (pool.length === 0) {
+    pool = ['Chicken', 'Beef', 'Eggs & Dairy', 'Plant Protein'];
+  }
+  return pool;
+}
+
+// Build slot definitions (slot labels & calorie ratios) from mealsPerDay + snacksPerDay
+function getDailySlotDefinitions(p = state.profile) {
+  const mCount = Math.max(1, Math.min(4, parseInt(p.mealsPerDay, 10) || 2));
+  const sCount = Math.max(0, Math.min(3, parseInt(p.snacksPerDay, 10) ?? 2));
+
+  const snackTotalShare = sCount * 0.11; // ~11% per snack
+  const mainTotalShare = 1.0 - snackTotalShare;
+
+  const mainNamesByCount = {
+    1: ['Meal 1 (Main Daily Feast)'],
+    2: ['Meal 1 (First Meal - Lighter)', 'Meal 2 (Dinner - Hearty Main)'],
+    3: ['Meal 1 (Breakfast)', 'Meal 2 (Lunch)', 'Meal 3 (Dinner)'],
+    4: ['Meal 1 (Breakfast)', 'Meal 2 (Midday Meal)', 'Meal 3 (Afternoon Meal)', 'Meal 4 (Dinner)']
+  };
+  const mainWeightsByCount = {
+    1: [1.0],
+    2: [0.36, 0.64],
+    3: [0.28, 0.34, 0.38],
+    4: [0.22, 0.26, 0.24, 0.28]
+  };
+
+  const slots = [];
+  const names = mainNamesByCount[mCount] || mainNamesByCount[2];
+  const weights = mainWeightsByCount[mCount] || mainWeightsByCount[2];
+
+  names.forEach((slotLabel, idx) => {
+    slots.push({
+      slot: slotLabel,
+      isSnack: false,
+      ratio: +(mainTotalShare * weights[idx]).toFixed(3)
+    });
+  });
+
+  for (let s = 1; s <= sCount; s++) {
+    slots.push({
+      slot: `Snack ${s}`,
+      isSnack: true,
+      ratio: +(snackTotalShare / sCount).toFixed(3)
+    });
+  }
+  return slots;
+}
+
+// Dynamically build 7 fresh, non-repeating days tailored to user's cuisines, meal structure & diet!
+function generateDynamicWeekDays(mondayISO, style = 'mix', genSeed = 1) {
+  const p = state.profile;
+  const dayNames = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+  const proteins = getApprovedProteinsForProfile(p);
+  const slotDefs = getDailySlotDefinitions(p);
+
+  const selectedCuisineIds = (p.selectedCuisines && p.selectedCuisines.length > 0)
+    ? p.selectedCuisines
+    : ['lebanese', 'mediterranean', 'egyptian', 'mexican', 'indian'];
+
+  const catalog = window.CUISINE_CATALOG || [];
+  const activeCuisines = selectedCuisineIds
+    .map(cid => catalog.find(c => c.id === cid || c.name.toLowerCase().includes(cid.toLowerCase())))
+    .filter(Boolean);
+  const cuisineList = activeCuisines.length > 0 ? activeCuisines : catalog.slice(0, 5);
+
+  const recentNames = new Set((state.mealHistoryLog || []).slice(0, 35).map(h => h.name));
+  // Also collect current week's meal names if refreshing so we never generate the same meals back-to-back!
+  if (state.weeksByStartISO[mondayISO]?.days) {
+    state.weeksByStartISO[mondayISO].days.forEach(d => {
+      (d.meals || []).forEach(m => recentNames.add(m.name));
+    });
+  }
+
+  const usedThisWeek = new Set();
+
+  return dayNames.map((dayName, dayIdx) => {
+    const dayDateISO = addDaysISO(mondayISO, dayIdx);
+    const primaryProtein = proteins[(dayIdx + genSeed) % proteins.length];
+    const dayCuisine = cuisineList[(dayIdx + genSeed * 2) % cuisineList.length];
+
+    let prepNote = `${dayCuisine.icon} ${dayCuisine.name} Focus • ${primaryProtein} Rotation`;
+    if (style === 'batch') {
+      prepNote = dayIdx % 2 === 0
+        ? `Batch Cook Day: Prep 2x ${primaryProtein} (${dayCuisine.name}) for effortless week`
+        : `Alternating Protein Day: ${primaryProtein} (${dayCuisine.name})`;
+    } else if (style === 'fresh') {
+      prepNote = `Fresh Daily Prep: 15-min ${dayCuisine.name} ${primaryProtein}`;
+    }
+
+    const meals = slotDefs.map((slotDef, slotIdx) => {
+      const slotCuisine = cuisineList[(dayIdx + slotIdx + genSeed * 3) % cuisineList.length];
+      const slotProtein = slotDef.isSnack
+        ? (p.dietaryRules?.includes('vegan') || p.allergies?.includes('dairy_free') ? 'Plant / Nuts & Berries' : 'Greek Yogurt & Berries')
+        : (slotIdx === 0 && !p.dietaryRules?.includes('vegan') && !p.allergies?.includes('egg_free') && slotDefs.filter(s => !s.isSnack).length >= 2)
+          ? (dayIdx % 2 === 0 ? 'Eggs & Dairy' : proteins[(dayIdx + 1 + genSeed) % proteins.length])
+          : primaryProtein;
+
+      const targetCal = Math.round(p.calories * slotDef.ratio);
+      const targetProt = Math.round(p.protein * slotDef.ratio);
+      const targetCarbs = Math.round(p.carbs * slotDef.ratio);
+      const targetFat = Math.round(p.fat * slotDef.ratio);
+      const targetFib = Math.round(p.fiber * slotDef.ratio);
+
+      const mealObj = synthesizeDistinctChefMeal({
+        slot: slotDef.slot,
+        isSnack: slotDef.isSnack,
+        protein: slotProtein,
+        cuisineObj: slotCuisine,
+        dayIdx,
+        slotIdx,
+        genSeed,
+        targetCal,
+        targetProt,
+        targetCarbs,
+        targetFat,
+        targetFib,
+        recentNames,
+        usedThisWeek
+      });
+
+      usedThisWeek.add(mealObj.name);
+      recordMealInHistory(mealObj.name, dayDateISO, mealObj.primaryProtein);
+      return mealObj;
+    });
+
+    const dayObj = {
+      day: dayName,
+      dateISO: dayDateISO,
+      primaryProtein,
+      prepNote,
+      meals
+    };
+    balanceDayToTarget(dayObj, p);
+    return dayObj;
+  });
+}
+
+function synthesizeDistinctChefMeal({
+  slot, isSnack, protein, cuisineObj, dayIdx, slotIdx, genSeed,
+  targetCal, targetProt, targetCarbs, targetFat, targetFib,
+  recentNames, usedThisWeek
+}) {
+  const p = state.profile;
+  const isVegan = p.dietaryRules?.includes('vegan');
+  const isDairyFree = isVegan || p.allergies?.includes('dairy_free') || p.dietaryRules?.includes('kosher');
+  const isGlutenFree = p.allergies?.includes('gluten_free') || p.dietaryRules?.includes('keto_low_carb');
+  const isNutFree = p.allergies?.includes('nut_free');
+  const appliances = (p.equipment && p.equipment.length > 0) ? p.equipment : ['Air Fryer', 'Stovetop Skillet', 'Grill', 'Oven'];
+
+  if (isSnack) {
+    const snackTemplates = [
+      {
+        title: isDairyFree ? `${cuisineObj.name} Spiced Roasted Chickpeas & Fresh Berries` : `Blackberry & Chia Greek Yogurt Power Bowl`,
+        app: 'No-Cook (3 mins)', prep: '3 mins', prot: isDairyFree ? 'Plant / Legumes' : 'Dairy',
+        ings: isDairyFree
+          ? [
+              { item: 'Crunchy Roasted Chickpeas', amount: '45g', store: 'Greenland Market / Papaya (Canton)', category: 'Pantry & Spices' },
+              { item: 'Fresh Blackberries & Raspberries', amount: '1 cup (125g)', store: "Joe Randazzo's (Westland)", category: 'Produce' },
+              { item: 'Chia Seeds', amount: '1 tbsp', store: "Costco / Sam's Club (Canton)", category: 'Pantry & Spices' }
+            ]
+          : [
+              { item: '0% Plain or Vanilla Greek Yogurt', amount: '1 cup (225g)', store: "Costco / Sam's Club (Canton)", category: 'Dairy & Eggs' },
+              { item: 'Fresh Blackberries & Raspberries', amount: '3/4 cup (100g)', store: "Joe Randazzo's (Westland)", category: 'Produce' },
+              { item: 'Chia Seeds & Cinnamon', amount: '1 tbsp (12g)', store: "Costco / Sam's Club (Canton)", category: 'Pantry & Spices' }
+            ],
+        steps: ['Portion into a chilled bowl, top with fresh berries and chia seeds, and enjoy cold.']
+      },
+      {
+        title: `Crunchy Sea-Salt Roasted Edamame & Crisp Honeycrisp Apple`,
+        app: 'No-Cook (2 mins)', prep: '2 mins', prot: 'Plant / Soy',
+        ings: [
+          { item: 'Dry Roasted Edamame Beans', amount: '45g (1/3 cup)', store: "Costco / Sam's Club (Canton)", category: 'Pantry & Spices' },
+          { item: 'Honeycrisp Apple (sliced)', amount: '1 small apple', store: "Joe Randazzo's (Westland)", category: 'Produce' }
+        ],
+        steps: ['Slice crisp Honeycrisp apple with a dash of cinnamon and pair with high-protein roasted edamame.']
+      },
+      {
+        title: isDairyFree ? `Mediterranean Hummus, Cucumber Spears & Bell Pepper Boats` : `Whipped Cottage Cheese / Labneh, Pear & Flaxseed Bowl`,
+        app: 'No-Cook (3 mins)', prep: '3 mins', prot: isDairyFree ? 'Legumes' : 'Dairy',
+        ings: isDairyFree
+          ? [
+              { item: 'Roasted Garlic Hummus', amount: '4 tbsp (60g)', store: 'Greenland Market / Papaya (Canton)', category: 'Pantry & Spices' },
+              { item: 'Persian Cucumbers & Mini Sweet Peppers', amount: '2 cups sliced', store: "Joe Randazzo's (Westland)", category: 'Produce' },
+              { item: 'Hemp Hearts or Pumpkin Seeds', amount: '1.5 tbsp', store: "Costco / Sam's Club (Canton)", category: 'Pantry & Spices' }
+            ]
+          : [
+              { item: '2% Cottage Cheese or Greek Yogurt', amount: '3/4 cup (170g)', store: "Costco / Sam's Club (Canton)", category: 'Dairy & Eggs' },
+              { item: 'Diced Ripe Pear or Strawberries', amount: '1 cup', store: "Joe Randazzo's (Westland)", category: 'Produce' },
+              { item: 'Ground Flaxseed', amount: '1 tbsp', store: 'Walmart / Meijer / Kroger / Target (Canton)', category: 'Pantry & Spices' }
+            ],
+        steps: ['Assemble in a snack bowl and sprinkle with seeds for sustained fiber and protein.']
+      },
+      {
+        title: isNutFree ? `Berry-Vanilla High-Protein Smoothie Shake` : `Chocolate Peanut-Butter Protein Pudding Cup`,
+        app: 'No-Cook / Blender (3 mins)', prep: '3 mins', prot: isDairyFree ? 'Plant Protein' : 'Whey & Dairy',
+        ings: [
+          { item: isDairyFree ? 'Plant Protein Powder & Almond Milk' : '0% Greek Yogurt & Protein Powder', amount: '1 serving', store: "Costco / Sam's Club (Canton)", category: 'Dairy & Eggs' },
+          { item: isNutFree ? 'Mixed Frozen Berries' : 'Powdered Peanut Butter (PBfit) & Cocoa', amount: '2 tbsp', store: "Costco / Sam's Club (Canton)", category: 'Pantry & Spices' }
+        ],
+        steps: ['Whisk or blend until thick and smooth; chill for 5 minutes before serving.']
+      },
+      {
+        title: isVegan ? `Za'atar Lupini Beans (Termos) & Citrus Clementines` : `Savory Cucumber, Lean Turkey Roll-Ups & Pumpkin Seeds`,
+        app: 'No-Cook (3 mins)', prep: '3 mins', prot: isVegan ? 'Plant / Legumes' : 'Turkey',
+        ings: [
+          { item: isVegan ? 'Mediterranean Lupini Beans or Edamame' : 'Deli Sliced Lean Turkey Breast', amount: '3.5 oz (100g)', store: 'Greenland Market / Papaya (Canton)', category: 'Halal Meat & Seafood' },
+          { item: 'Persian Cucumbers & Sweet Clementine', amount: '2 cucumbers + 1 clementine', store: "Joe Randazzo's (Westland)", category: 'Produce' }
+        ],
+        steps: ['Plate chilled with lemon juice, black pepper, and crisp cucumber spears.']
+      },
+      {
+        title: `Warm Cinnamon Apple Pie Protein Parfait`,
+        app: 'Microwave (2 mins)', prep: '3 mins', prot: isDairyFree ? 'Plant Protein' : 'Dairy',
+        ings: [
+          { item: 'Diced Gala Apple + Cinnamon', amount: '1 medium apple', store: "Joe Randazzo's (Westland)", category: 'Produce' },
+          { item: isDairyFree ? 'Coconut/Almond Protein Yogurt' : '0% Plain Greek Yogurt', amount: '1 cup (225g)', store: "Costco / Sam's Club (Canton)", category: 'Dairy & Eggs' },
+          { item: 'Chia Seeds', amount: '1 tbsp', store: "Costco / Sam's Club (Canton)", category: 'Pantry & Spices' }
+        ],
+        steps: ['Microwave diced apple with cinnamon for 90 seconds until tender, then spoon over cold yogurt and chia seeds.']
+      }
+    ];
+
+    let chosenSnack = snackTemplates[(dayIdx * 2 + slotIdx + genSeed) % snackTemplates.length];
+    for (let attempt = 0; attempt < snackTemplates.length; attempt++) {
+      const cand = snackTemplates[(dayIdx * 2 + slotIdx + genSeed + attempt) % snackTemplates.length];
+      if (!usedThisWeek.has(cand.title)) {
+        chosenSnack = cand;
+        break;
+      }
+    }
+
+    return {
+      id: `dyn-${dayIdx}-s${slotIdx}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      slot,
+      name: chosenSnack.title,
+      appliance: chosenSnack.app,
+      prepTime: chosenSnack.prep,
+      primaryProtein: chosenSnack.prot,
+      calories: targetCal,
+      protein: targetProt,
+      carbs: targetCarbs,
+      fat: targetFat,
+      fiber: targetFib,
+      upgradeApplied: false,
+      flavorUpgrade: {
+        name: isNutFree ? 'Add 15g Dark Chocolate Chips & Cinnamon' : 'Add 12g Crushed Pistachios & Raw Honey Drizzle',
+        calories: 70, protein: 2, carbs: 6, fat: 4, fiber: 1
+      },
+      ingredients: chosenSnack.ings,
+      steps: chosenSnack.steps
+    };
+  }
+
+  // Main Meal synthesis using cuisineObj's rich styles, sauces, carbs, and veggies
+  const styles = cuisineObj.styles || ['Spiced Grill Bowl', 'Sizzling Skillet', 'Charred Platter', 'Crispy Pocket Wrap'];
+  const sauces = cuisineObj.sauces || ['Garlic-Herb Drizzle', 'Zesty Citrus Sauce'];
+  const carbs = cuisineObj.carbs || ['Basmati Rice & Chickpeas', 'Roasted Baby Potatoes'];
+  const veggies = cuisineObj.veggies || ['Charred Bell Peppers, Onions & Greens'];
+
+  let selectedStyle = styles[(dayIdx + slotIdx * 2 + genSeed) % styles.length];
+  let selectedSauce = sauces[(dayIdx + slotIdx + genSeed) % sauces.length];
+  let selectedCarb = carbs[(dayIdx + slotIdx + genSeed * 2) % carbs.length];
+  let selectedVeg = veggies[(dayIdx + genSeed) % veggies.length];
+
+  if (isGlutenFree && /pita|flatbread|lavash|pasta|bulgur|couscous|wrap|bread|roti|chapati/i.test(selectedCarb)) {
+    selectedCarb = 'Fluffy Basmati Rice & Roasted Sweet Potato Cubes';
+  }
+  if (isDairyFree && /yogurt|labneh|feta|cheese|butter|crema|tzatziki|raita|cacik/i.test(selectedSauce)) {
+    selectedSauce = 'Lemon-Garlic Extra Virgin Olive Oil & Tahini Herb Drizzle';
+  }
+
+  const appChoice = appliances[(dayIdx + slotIdx + genSeed) % appliances.length];
+  const baseDishName = `${cuisineObj.name.split('/')[0].trim()} ${protein} ${selectedStyle} with ${selectedCarb.split('&')[0].trim()}`;
+
+  // Ensure uniqueness across the week and against recent history
+  let finalName = baseDishName;
+  if (usedThisWeek.has(finalName) || recentNames.has(finalName)) {
+    const altStyle = styles[(dayIdx + slotIdx * 2 + genSeed + 2) % styles.length];
+    finalName = `${appChoice.split(' ')[0]} ${cuisineObj.name.split('/')[0].trim()} ${protein} ${altStyle} & ${selectedSauce.split(' ')[0]} ${selectedCarb.split(' ')[0]}`;
+  }
+
+  const ozPortion = Math.max(4.0, Math.round((targetProt / 7.2) * 10) / 10);
+  const gramsPortion = Math.round(ozPortion * 28.35);
+  const protStore = (protein.includes('Shrimp') || protein.includes('Tilapia') || protein.includes('Salmon') || protein.includes('Egg'))
+    ? "Costco / Sam's Club (Canton)"
+    : "Greenland Market / Papaya (Canton)";
+
+  return {
+    id: `dyn-${dayIdx}-m${slotIdx}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+    slot,
+    cuisine: cuisineObj.name,
+    name: finalName,
+    appliance: `${appChoice} (14 mins)`,
+    prepTime: '15 mins',
+    primaryProtein: protein,
+    calories: targetCal,
+    protein: targetProt,
+    carbs: targetCarbs,
+    fat: targetFat,
+    fiber: targetFib,
+    upgradeApplied: false,
+    flavorUpgrade: {
+      name: `Extra ${selectedSauce} & Roasted Seeds/Herbs`,
+      calories: 85, protein: 3, carbs: 4, fat: 6, fiber: 1
+    },
+    ingredients: [
+      { item: `${p.dietaryRules?.includes('halal') && ['Chicken', 'Beef', 'Turkey'].includes(protein) ? 'Halal ' : ''}${protein}`, amount: `${ozPortion} oz (${gramsPortion}g) raw`, store: protStore, category: 'Halal Meat & Seafood' },
+      { item: selectedCarb, amount: `${Math.max(90, Math.round(targetCarbs * 2.2))}g cooked portion`, store: 'Walmart / Meijer / Kroger / Target (Canton)', category: 'Bread & Grains' },
+      { item: selectedVeg, amount: '1.5 cups fresh', store: "Joe Randazzo's (Westland)", category: 'Produce' },
+      { item: `${cuisineObj.spices} + ${selectedSauce}`, amount: '2 tbsp marinade & sauce', store: 'Greenland Market / Papaya (Canton)', category: 'Pantry & Spices' }
+    ],
+    steps: [
+      `Marinate ${ozPortion} oz (${gramsPortion}g) of ${protein} with ${cuisineObj.spices}, a squeeze of fresh lemon/lime, and sea salt.`,
+      `Cook using your ${appChoice} for 10–14 minutes until golden, sizzling, and cooked through alongside ${selectedVeg.toLowerCase()}.`,
+      `Plate warm ${selectedCarb.toLowerCase()} as the base, top with the ${protein.toLowerCase()} and vegetables, and finish with ${selectedSauce.toLowerCase()}.`
+    ]
+  };
+}
+
 function ensureWeekExists(mondayISO, forceRegenerate = false, customStyle = null) {
   if (state.weeksByStartISO[mondayISO] && !forceRegenerate) {
-    // Ensure all days in existing saved week have verified links & exact daily macro balance
     state.weeksByStartISO[mondayISO].days.forEach(d => balanceDayToTarget(d, state.profile));
     return state.weeksByStartISO[mondayISO];
   }
 
   const style = customStyle || state.profile.prepStyle || 'mix';
-  const baseDays = JSON.parse(JSON.stringify(window.STARTER_WEEK_PLAN));
+  state.weekGenerationSeed = (state.weekGenerationSeed || 0) + 1;
 
-  baseDays.forEach((dayObj, idx) => {
-    const dayDateISO = addDaysISO(mondayISO, idx);
-    dayObj.dateISO = dayDateISO;
+  // Use Mo's classic starter week ONLY on Mo's very first initial load when not force-regenerating
+  const isMoInitialDefault =
+    currentSession?.username === 'mo' &&
+    !forceRegenerate &&
+    state.weekGenerationSeed === 1 &&
+    (state.profile.mealsPerDay || 2) === 2 &&
+    (state.profile.snacksPerDay ?? 2) === 2;
 
-    if (style === 'batch') {
-      dayObj.prepNote = idx % 2 === 0
-        ? `Batch Cook Day: Cook 2 portions of ${dayObj.primaryProtein} (Eat today & in 48 hrs)`
-        : `Alternating Protein Day: ${dayObj.primaryProtein} rotation`;
-    } else if (style === 'fresh') {
-      dayObj.prepNote = `Fresh Daily Prep: Quick 15-min ${dayObj.primaryProtein} cook`;
-    }
-
-    dayObj.meals.forEach(m => {
-      m.upgradeApplied = false;
-      recordMealInHistory(m.name, dayDateISO, m.primaryProtein);
+  let baseDays;
+  if (isMoInitialDefault) {
+    baseDays = JSON.parse(JSON.stringify(window.STARTER_WEEK_PLAN));
+    baseDays.forEach((dayObj, idx) => {
+      const dayDateISO = addDaysISO(mondayISO, idx);
+      dayObj.dateISO = dayDateISO;
+      dayObj.meals.forEach(m => {
+        m.upgradeApplied = false;
+        recordMealInHistory(m.name, dayDateISO, m.primaryProtein);
+      });
+      balanceDayToTarget(dayObj, state.profile);
     });
-    balanceDayToTarget(dayObj, state.profile);
-  });
+  } else {
+    baseDays = generateDynamicWeekDays(mondayISO, style, state.weekGenerationSeed);
+  }
 
   state.weeksByStartISO[mondayISO] = {
     weekStartISO: mondayISO,
     weekEndISO: addDaysISO(mondayISO, 6),
     generatedAt: new Date().toISOString(),
     prepStyle: style,
+    generationSeed: state.weekGenerationSeed,
     targetSnapshot: {
       calories: state.profile.calories,
       protein: state.profile.protein,
@@ -361,6 +817,9 @@ function showToast(msg) {
 
 // 4-Tab Navigation
 function switchTab(tabName) {
+  if (tabName === 'generator' && !requireOnboardingComplete('use the Craving & Meal Generator')) {
+    return;
+  }
   if (tabName === 'favorites') {
     tabName = 'generator';
     switchGeneratorSubMode('favorites');
@@ -393,8 +852,8 @@ function renderAll() {
 
 function renderHeaderBadge() {
   const p = state.profile;
-  const displayName = state.displayName || currentSession?.displayName || 'Mo';
-  const appTitleText = `${displayName}'s Meal Prep`;
+  const displayName = currentSession?.displayName || state.displayName || 'Guest';
+  const appTitleText = currentSession?.username ? `${displayName}'s Meal Prep` : 'Meal Prep Studio';
   const titleEl = document.getElementById('headerAppTitle');
   const avatarEl = document.getElementById('headerAvatarIcon');
   const syncTxt = document.getElementById('syncText');
@@ -403,10 +862,10 @@ function renderHeaderBadge() {
 
   document.title = appTitleText;
   if (titleEl) titleEl.textContent = appTitleText;
-  if (avatarEl) avatarEl.textContent = displayName.charAt(0).toUpperCase();
+  if (avatarEl) avatarEl.textContent = currentSession?.username ? displayName.charAt(0).toUpperCase() : '🥗';
   if (syncTxt) syncTxt.textContent = `👤 ${displayName}`;
   if (profTitle) profTitle.textContent = `${displayName}'s Body Profile & Goal`;
-  if (profSub) profSub.textContent = `${p.heightFt || 5}'${p.heightIn ?? 7}" • Age ${p.age || 42} • Personalized Plan`;
+  if (profSub) profSub.textContent = `${p.heightFt || 5}'${p.heightIn ?? 7}" • Age ${p.age || 34} • ${p.mealsPerDay || 2} Meals + ${p.snacksPerDay ?? 2} Snacks`;
 
   const badge = document.getElementById('headerTargetBadge');
   if (badge) {
@@ -655,13 +1114,14 @@ function renderDayMeals() {
   const container = document.getElementById('dayMealsContainer');
   if (!dayObj || !container) return;
 
-  const mainMeals = dayObj.meals.slice(0, 2);
-  const snacks = dayObj.meals.slice(2);
+  const indexedMeals = (dayObj.meals || []).map((m, idx) => ({ meal: m, idx }));
+  const mainMeals = indexedMeals.filter(x => !String(x.meal.slot || '').toLowerCase().includes('snack'));
+  const snacks = indexedMeals.filter(x => String(x.meal.slot || '').toLowerCase().includes('snack'));
 
-  const mainHTML = mainMeals.map((meal, idx) => renderCleanMealCard(meal, state.selectedDayIndex, idx)).join('');
+  const mainHTML = mainMeals.map(({ meal, idx }) => renderCleanMealCard(meal, state.selectedDayIndex, idx)).join('');
   const snacksHTML = snacks.length > 0 ? `
     <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-      ${snacks.map((snack, sIdx) => renderCompactSnackCard(snack, state.selectedDayIndex, sIdx + 2)).join('')}
+      ${snacks.map(({ meal, idx }) => renderCompactSnackCard(meal, state.selectedDayIndex, idx)).join('')}
     </div>
   ` : '';
 
@@ -671,7 +1131,7 @@ function renderDayMeals() {
 function renderCleanMealCard(meal, dayIdx, mealIdx) {
   const eff = getMealEffectiveMacros(meal);
   const isFav = state.favorites.some(f => f.name === meal.name);
-  const slotShort = mealIdx === 0 ? 'Meal 1 • First Meal' : 'Meal 2 • Dinner';
+  const slotShort = meal.slot || (mealIdx === 0 ? 'Meal 1 • First Meal' : 'Meal 2 • Dinner');
 
   return `
     <div onclick="openRecipeDrawer(${dayIdx}, ${mealIdx})" class="soft-card rounded-3xl p-4 cursor-pointer hover:border-emerald-500/40 transition group">
@@ -956,7 +1416,13 @@ function updateTreatVibeOptions() {
   }
 }
 
+// Track cycling index so clicking Generate Treat or Generate Meal with the same dropdowns ALWAYS returns a new item!
+const _treatCycleCounters = {};
+let _singleMealGenCounter = 0;
+
 function generateYummyTreat() {
+  if (!requireOnboardingComplete('use the Movie Treat & Craving Finder')) return;
+
   const taste = document.getElementById('treatTaste').value;
   const vibe = document.getElementById('treatVibe').value;
   const calBudget = parseInt(document.getElementById('treatCalories').value, 10) || 260;
@@ -965,15 +1431,27 @@ function generateYummyTreat() {
 
   if (source === 'home') {
     const homeRecipe = getHomemadeTreatRecipe(taste, vibe, calBudget);
-    out.innerHTML = renderMealCardHTML(homeRecipe, 0, 0, true);
+    out.innerHTML = `
+      <div class="space-y-2.5">
+        ${renderMealCardHTML(homeRecipe, 0, 0, true)}
+        <button onclick="generateYummyTreat()" class="w-full py-3 rounded-2xl bg-amber-500/15 hover:bg-amber-500/25 text-amber-600 dark:text-amber-300 border border-amber-500/30 font-extrabold text-xs transition flex items-center justify-center gap-1.5">
+          <span>🎲</span> Generate Another Homemade Treat Idea (Same Craving Filters)
+        </button>
+      </div>
+    `;
     openRecipeDrawer(0, 0, homeRecipe);
   } else {
     const storeOptions = getStoreBoughtTreatOptions(taste, vibe, calBudget);
     out.innerHTML = `
       <div class="soft-card rounded-3xl p-5 space-y-4">
-        <div>
-          <span class="text-[10px] font-bold uppercase tracking-wider text-amber-600 dark:text-amber-400">Ready-to-Eat Canton Options</span>
-          <h3 class="text-base font-bold mt-0.5">🛒 Top 3 Store-Bought Treats</h3>
+        <div class="flex items-center justify-between gap-2">
+          <div>
+            <span class="text-[10px] font-bold uppercase tracking-wider text-amber-600 dark:text-amber-400">Ready-to-Eat Store Options</span>
+            <h3 class="text-base font-bold mt-0.5">🛒 3 Store-Bought Treats (Rotated Fresh!)</h3>
+          </div>
+          <button onclick="generateYummyTreat()" class="px-3 py-1.5 rounded-xl bg-amber-500 text-slate-950 text-xs font-extrabold shrink-0 shadow-sm hover:bg-amber-400 transition">
+            🎲 3 More Picks
+          </button>
         </div>
         <div class="space-y-3">
           ${storeOptions.map((opt, idx) => {
@@ -995,6 +1473,9 @@ function generateYummyTreat() {
             `;
           }).join('')}
         </div>
+        <button onclick="generateYummyTreat()" class="w-full py-3 rounded-2xl bg-amber-500/15 hover:bg-amber-500/25 text-amber-600 dark:text-amber-300 border border-amber-500/30 font-extrabold text-xs transition">
+          🎲 Show Me 3 Different Store-Bought Treats
+        </button>
       </div>
     `;
   }
@@ -1012,213 +1493,41 @@ function addStoreTreatToGroceryList(itemName, storeName) {
 }
 
 function getHomemadeTreatRecipe(taste, vibe, calBudget) {
-  const recipes = {
-    chocolate_pb: {
-      name: "60-Second Molten Chocolate Peanut Butter Lava Protein Mug Cake",
-      appliance: "Microwave (1 min)",
-      prepTime: "4 mins",
-      primaryProtein: "Whey & Dairy",
-      calories: calBudget,
-      protein: 24,
-      carbs: 22,
-      fat: 9,
-      fiber: 5,
-      flavorUpgrade: { name: "Top with 2 tbsp Sugar-Free Whipped Cream & 1 tsp Melted PB", calories: 60, protein: 2, carbs: 2, fat: 5, fiber: 0 },
-      ingredients: [
-        { item: "Chocolate Whey Protein Powder", amount: "1 scoop (30g)", store: "Costco / Sam's Club (Canton)", category: "Pantry & Spices" },
-        { item: "Unsweetened Cocoa Powder & Baking Powder", amount: "1 tbsp cocoa + 1/4 tsp baking powder", store: "Walmart / Meijer / Kroger / Target (Canton)", category: "Pantry & Spices" },
-        { item: "0% Greek Yogurt & Almond Milk", amount: "3 tbsp yogurt + 2 tbsp milk", store: "Costco / Sam's Club (Canton)", category: "Dairy & Eggs" },
-        { item: "Natural Creamy Peanut Butter", amount: "1 tbsp (15g)", store: "Costco / Sam's Club (Canton)", category: "Pantry & Spices" }
-      ],
-      steps: [
-        "Whisk chocolate protein powder, 1 tbsp cocoa powder, 1/4 tsp baking powder, 3 tbsp Greek yogurt, and 2 tbsp milk in a mug until smooth.",
-        "Drop 1 tbsp peanut butter into the center.",
-        "Microwave for 45–55 seconds so the center stays molten. Cool 1 minute and enjoy!"
-      ]
-    },
-    ice_cream: {
-      name: "Thick Pistachio & Berry Cheesecake Frozen Yogurt Bowl",
-      appliance: "No-Cook / Freezer (5 mins)",
-      prepTime: "5 mins",
-      primaryProtein: "Dairy",
-      calories: calBudget,
-      protein: 23,
-      carbs: 26,
-      fat: 8,
-      fiber: 6,
-      flavorUpgrade: { name: "Add 15g Crushed Biscoff or Graham Cracker Crust", calories: 70, protein: 1, carbs: 11, fat: 3, fiber: 0 },
-      ingredients: [
-        { item: "0% Plain Greek Yogurt + 1 tbsp Labneh", amount: "1 cup (225g)", store: "Costco / Sam's Club (Canton)", category: "Dairy & Eggs" },
-        { item: "Sugar-Free Cheesecake Pudding Mix", amount: "1.5 tbsp", store: "Walmart / Meijer / Kroger / Target (Canton)", category: "Pantry & Spices" },
-        { item: "Fresh Strawberries & Raspberries", amount: "3/4 cup", store: "Joe Randazzo's (Westland)", category: "Produce" },
-        { item: "Crushed Shelled Pistachios", amount: "15g", store: "Greenland Market / Papaya (Canton)", category: "Pantry & Spices" }
-      ],
-      steps: [
-        "Whip cold Greek yogurt, 1 tbsp labneh, and cheesecake pudding mix for 60 seconds until thick like mousse.",
-        "Top with fresh berries from Joe Randazzo's and crushed pistachios. Chill 15 mins in freezer!"
-      ]
-    },
-    warm_bakery: {
-      name: "Air Fryer Crispy Cinnamon-Sugar Churro Chips with Chocolate Dip",
-      appliance: "Air Fryer (6 mins)",
-      prepTime: "8 mins",
-      primaryProtein: "Dairy & Fiber",
-      calories: calBudget,
-      protein: 22,
-      carbs: 28,
-      fat: 7,
-      fiber: 11,
-      flavorUpgrade: { name: "Dip in Warm Caramel Sauce (1 tbsp)", calories: 55, protein: 0, carbs: 13, fat: 0, fiber: 0 },
-      ingredients: [
-        { item: "High-Fiber Carb Balance Tortilla", amount: "1 large tortilla", store: "Walmart / Meijer / Kroger / Target (Canton)", category: "Bread & Grains" },
-        { item: "Cinnamon & Zero-Cal Sweetener", amount: "1 tbsp mix", store: "Walmart / Meijer / Kroger / Target (Canton)", category: "Pantry & Spices" },
-        { item: "Greek Yogurt + Chocolate Protein Powder Dip", amount: "1/2 cup yogurt + 1/2 scoop whey", store: "Costco / Sam's Club (Canton)", category: "Dairy & Eggs" }
-      ],
-      steps: [
-        "Slice tortilla into 8 wedges, mist with oil spray, and coat with cinnamon-sweetener.",
-        "Air fry at 390°F for 5–6 minutes until crunchy like churros.",
-        "Dip into thick chocolate Greek yogurt frosting."
-      ]
-    },
-    cheesy_nacho: {
-      name: "Loaded Air Fryer High-Protein Chicken & Queso Movie Nachos",
-      appliance: "Air Fryer (7 mins)",
-      prepTime: "10 mins",
-      primaryProtein: "Chicken & Cheese",
-      calories: calBudget,
-      protein: 28,
-      carbs: 22,
-      fat: 9,
-      fiber: 9,
-      flavorUpgrade: { name: "Top with 2 tbsp Guacamole & Jalapeños", calories: 55, protein: 1, carbs: 3, fat: 5, fiber: 2 },
-      ingredients: [
-        { item: "Quest Protein Tortilla Chips (or High-Fiber Tortilla Chips)", amount: "1 bag", store: "Walmart / Meijer / Kroger / Target (Canton)", category: "Bread & Grains" },
-        { item: "Shredded Cooked Halal Chicken Breast", amount: "3 oz (85g)", store: "Greenland Market / Papaya (Canton)", category: "Halal Meat & Seafood" },
-        { item: "Reduced-Fat Mexican Blend Cheese & Pico", amount: "1/3 cup cheese + 1/4 cup pico", store: "Costco / Sam's Club (Canton)", category: "Dairy & Eggs" }
-      ],
-      steps: [
-        "Arrange tortilla chips in Air Fryer, top with shredded chicken and cheese, and air fry at 390°F for 3 minutes until melty.",
-        "Top with fresh pico de gallo."
-      ]
-    },
-    spicy_crunchy: {
-      name: "Crispy Air Fryer Buffalo Chicken & Cauliflower Bites",
-      appliance: "Air Fryer (10 mins)",
-      prepTime: "12 mins",
-      primaryProtein: "Chicken",
-      calories: calBudget,
-      protein: 26,
-      carbs: 16,
-      fat: 8,
-      fiber: 5,
-      flavorUpgrade: { name: "Add 15g Crumbled Blue Cheese or Feta", calories: 55, protein: 3, carbs: 1, fat: 4, fiber: 0 },
-      ingredients: [
-        { item: "Halal Chicken Breast Bites & Cauliflower", amount: "3.5 oz chicken + 1 cup cauliflower", store: "Greenland Market / Papaya (Canton)", category: "Halal Meat & Seafood" },
-        { item: "Frank's RedHot Buffalo Sauce", amount: "2 tbsp", store: "Walmart / Meijer / Kroger / Target (Canton)", category: "Pantry & Spices" },
-        { item: "Greek Yogurt Ranch Dip", amount: "3 tbsp", store: "Costco / Sam's Club (Canton)", category: "Dairy & Eggs" }
-      ],
-      steps: [
-        "Toss chicken bites and cauliflower in garlic powder and Frank's Buffalo sauce.",
-        "Air fry at 400°F for 9–10 minutes until crispy. Serve with Greek yogurt ranch."
-      ]
-    },
-    arabic_meze: {
-      name: "Warm Crispy Za'atar Pita Chips with Loaded Labneh Dip",
-      appliance: "Air Fryer (6 mins)",
-      prepTime: "8 mins",
-      primaryProtein: "Dairy",
-      calories: calBudget,
-      protein: 21,
-      carbs: 24,
-      fat: 9,
-      fiber: 6,
-      flavorUpgrade: { name: "Drizzle with 1 tsp Olive Oil & Pomegranate Seeds", calories: 55, protein: 0, carbs: 3, fat: 5, fiber: 1 },
-      ingredients: [
-        { item: "Whole Wheat Arabic Pita (triangles)", amount: "1 small pita", store: "Greenland Market / Papaya (Canton)", category: "Bread & Grains" },
-        { item: "Labneh & Greek Yogurt Mix", amount: "1/2 cup", store: "Greenland Market / Papaya (Canton)", category: "Dairy & Eggs" },
-        { item: "Za'atar, Mint & Diced Cucumber", amount: "1/2 cup", store: "Joe Randazzo's (Westland)", category: "Produce" }
-      ],
-      steps: [
-        "Spray pita wedges with olive oil, sprinkle with za'atar, and air fry at 390°F for 5 minutes.",
-        "Scoop up chilled labneh topped with cucumber and mint."
-      ]
-    }
-  };
+  const vault = window.HOMEMADE_TREAT_VAULT || {};
+  const list = vault[vibe] || vault.chocolate_pb || [];
+  const key = `home_${taste}_${vibe}`;
+  const idx = _treatCycleCounters[key] || 0;
+  _treatCycleCounters[key] = idx + 1;
 
-  const chosen = recipes[vibe] || recipes.chocolate_pb;
+  const base = list[idx % list.length];
+  const scale = calBudget / 260;
+
   return {
-    id: 'treat-home-' + Date.now(),
-    slot: `🍿 Movie Treat`,
-    ...chosen,
+    id: 'treat-home-' + Date.now() + '-' + idx,
+    slot: `🍿 Movie Treat (#${(idx % list.length) + 1} of ${list.length})`,
+    ...JSON.parse(JSON.stringify(base)),
+    calories: calBudget,
+    protein: Math.max(12, Math.round((base.protein || 22) * scale)),
+    carbs: Math.max(10, Math.round((base.carbs || 24) * scale)),
+    fat: Math.max(4, Math.round((base.fat || 8) * scale)),
+    fiber: Math.max(3, Math.round((base.fiber || 5) * scale)),
     upgradeApplied: false
   };
 }
 
-function getStoreBoughtTreatOptions(taste) {
-  if (taste === 'savory') {
-    return [
-      {
-        name: "Quest Tortilla Style Protein Chips (Nacho Cheese / Chili Lime) + Salsa",
-        store: "Walmart / Meijer / Kroger / Target (Canton)",
-        description: "Crunchy Doritos-style chips with 20g protein and only 4g net carbs.",
-        calories: 180, protein: 20, carbs: 9, fat: 6, fiber: 3
-      },
-      {
-        name: "LesserEvil Himalayan Gold Popcorn (2.5 cups) + 2 Light String Cheeses",
-        store: "Costco / Sam's Club (Canton)",
-        description: "Movie-theater butter flavor popcorn paired with 2 high-protein string cheeses.",
-        calories: 230, protein: 15, carbs: 21, fat: 10, fiber: 5
-      },
-      {
-        name: "Greenland Market Roasted Salted Chickpeas (Qadama) + Labneh Dip",
-        store: "Greenland Market / Papaya (Canton)",
-        description: "Crunchy Arabic roasted chickpeas paired with creamy labneh and cucumber.",
-        calories: 245, protein: 14, carbs: 28, fat: 8, fiber: 7
-      }
-    ];
-  } else if (taste === 'sweet_salty') {
-    return [
-      {
-        name: "SkinnyPop Kettle Corn (2 cups) + Barebells Caramel Cashew Protein Bar",
-        store: "Walmart / Meijer / Kroger / Target (Canton)",
-        description: "Chop a Barebells bar (tastes like Snickers!) into bite-sized pieces with kettle popcorn.",
-        calories: 290, protein: 21, carbs: 32, fat: 10, fiber: 5
-      },
-      {
-        name: "Tru Fru Frozen Raspberries in Dark & White Chocolate",
-        store: "Costco / Sam's Club (Canton)",
-        description: "Real whole raspberries immersed in white and dark chocolate in the freezer aisle.",
-        calories: 210, protein: 3, carbs: 25, fat: 10, fiber: 5
-      },
-      {
-        name: "Chobani Flip (Salted Caramel Crunch) + 12 Roasted Almonds",
-        store: "Walmart / Meijer / Kroger / Target (Canton)",
-        description: "Greek yogurt with crunchy salted caramel and pretzel mix-ins.",
-        calories: 250, protein: 15, carbs: 26, fat: 9, fiber: 3
-      }
-    ];
-  } else {
-    return [
-      {
-        name: "Yasso Frozen Greek Yogurt Bars (Fudge Brownie / Mint Chocolate Chip)",
-        store: "Walmart / Meijer / Kroger / Target (Canton)",
-        description: "Real ice-cream bar texture for 100 kcal per bar (have 2 bars for a 200-kcal movie treat!).",
-        calories: 200, protein: 10, carbs: 28, fat: 4, fiber: 2
-      },
-      {
-        name: "Halo Top Light Ice Cream Pint (Cookie Dough / Peanut Butter Cup - 2/3 Pint)",
-        store: "Walmart / Meijer / Kroger / Target (Canton)",
-        description: "Eat two-thirds of a pint right out of the tub for 230 calories and 14g protein.",
-        calories: 230, protein: 14, carbs: 34, fat: 6, fiber: 8
-      },
-      {
-        name: "Barebells Chocolate Dough Bar (Warmed 10 Secs in Microwave)",
-        store: "Walmart / Meijer / Kroger / Target (Canton)",
-        description: "Warm for 10 seconds in the microwave—melts into a gooey brownie with 20g protein!",
-        calories: 200, protein: 20, carbs: 20, fat: 7, fiber: 3
-      }
-    ];
+function getStoreBoughtTreatOptions(taste, vibe = '', calBudget = 260) {
+  const vault = window.STORE_TREAT_VAULT || {};
+  const pool = vault[taste] || vault.sweet || [];
+  const key = `store_${taste}_${vibe}`;
+  const offset = (_treatCycleCounters[key] || 0) * 3;
+  _treatCycleCounters[key] = (_treatCycleCounters[key] || 0) + 1;
+
+  const picked = [];
+  for (let i = 0; i < 3; i++) {
+    const item = pool[(offset + i) % pool.length];
+    if (item) picked.push(item);
   }
+  return picked;
 }
 
 // ================= FAVORITES & MEAL HISTORY LOG =================
@@ -1270,6 +1579,7 @@ function clearHistoryLog() {
 
 // ================= SWAP MEAL MODAL & ASSIGN TO PLAN =================
 function openSwapMealModal(dayIdx, mealIdx) {
+  if (!requireOnboardingComplete('swap or generate meals')) return;
   const days = getActiveWeekDays();
   const currentMeal = days[dayIdx].meals[mealIdx];
   const dayObj = days[dayIdx];
@@ -1335,7 +1645,9 @@ function replaceMealSlot(dayIdx, mealIdx, newMeal) {
 }
 
 function openAssignToPlanModal(meal) {
+  if (!requireOnboardingComplete('assign meals to your weekly plan')) return;
   const days = getActiveWeekDays();
+  const slotMeals = days[0]?.meals || [];
   const modal = document.getElementById('appModal');
   const content = document.getElementById('appModalContent');
 
@@ -1357,10 +1669,7 @@ function openAssignToPlanModal(meal) {
       <div>
         <label class="block font-semibold text-slate-400 mb-1">Select Meal Slot:</label>
         <select id="assignMealIdx" class="w-full soft-input rounded-xl px-3 py-2.5">
-          <option value="0">Meal 1 (First Meal - Lighter)</option>
-          <option value="1">Meal 2 (Dinner - Hearty Main)</option>
-          <option value="2">Snack 1</option>
-          <option value="3">Snack 2</option>
+          ${slotMeals.map((m, idx) => `<option value="${idx}">${m.slot}</option>`).join('')}
         </select>
       </div>
       <button onclick='confirmAssignMeal(${JSON.stringify(meal).replace(/'/g, "&#39;")})' class="w-full py-3 rounded-2xl bg-slate-900 dark:bg-emerald-500 text-white dark:text-slate-950 font-bold">
@@ -1385,6 +1694,8 @@ function closeModal() {
 
 // ================= ON-DEMAND SINGLE GENERATOR & GEMINI AI =================
 async function generateSingleMeal() {
+  if (!requireOnboardingComplete('use the On-Demand Craving & Meal Generator')) return;
+
   const slot = document.getElementById('genSlot').value;
   const protein = document.getElementById('genProtein').value;
   const cuisine = document.getElementById('genCuisine').value;
@@ -1404,7 +1715,7 @@ async function generateSingleMeal() {
   const targetFib = Math.round(state.profile.fiber * ratio);
 
   btn.disabled = true;
-  btn.textContent = '⏳ Crafting Custom Recipe...';
+  btn.textContent = '⏳ Crafting Fresh Custom Recipe...';
 
   try {
     let generatedMeal = null;
@@ -1414,36 +1725,56 @@ async function generateSingleMeal() {
       generatedMeal = buildSmartLocalRecipe({ slot, protein, cuisine, appliance, note, targetCal, targetProt, targetCarbs, targetFat, targetFib });
     }
 
-    out.innerHTML = renderMealCardHTML(generatedMeal, 0, 0, true);
+    recordMealInHistory(generatedMeal.name, formatDateISO(new Date()), generatedMeal.primaryProtein);
+    out.innerHTML = `
+      <div class="space-y-2.5">
+        ${renderMealCardHTML(generatedMeal, 0, 0, true)}
+        <button onclick="generateSingleMeal()" class="w-full py-3 rounded-2xl bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 font-extrabold text-xs transition flex items-center justify-center gap-1.5">
+          <span>🎲</span> Generate Another Fresh Dish (Same Filters)
+        </button>
+      </div>
+    `;
     openRecipeDrawer(0, 0, generatedMeal);
   } catch (err) {
     const fallback = buildSmartLocalRecipe({ slot, protein, cuisine, appliance, note, targetCal, targetProt, targetCarbs, targetFat, targetFib });
-    out.innerHTML = renderMealCardHTML(fallback, 0, 0, true);
+    recordMealInHistory(fallback.name, formatDateISO(new Date()), fallback.primaryProtein);
+    out.innerHTML = `
+      <div class="space-y-2.5">
+        ${renderMealCardHTML(fallback, 0, 0, true)}
+        <button onclick="generateSingleMeal()" class="w-full py-3 rounded-2xl bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 font-extrabold text-xs transition flex items-center justify-center gap-1.5">
+          <span>🎲</span> Generate Another Fresh Dish (Same Filters)
+        </button>
+      </div>
+    `;
     openRecipeDrawer(0, 0, fallback);
   } finally {
     btn.disabled = false;
-    btn.textContent = '🔥 Generate Recipe';
+    btn.textContent = '🔥 Generate Fresh Recipe (Click Again for Another Idea!)';
   }
 }
 
 async function callGeminiSingleRecipe({ slot, protein, cuisine, appliance, note, targetCal, targetProt, targetCarbs, targetFat, targetFib }) {
-  const recentMeals = (state.mealHistoryLog || []).slice(0, 15).map(h => h.name).join(', ');
+  const recentMeals = (state.mealHistoryLog || []).slice(0, 20).map(h => h.name).join(', ');
+  const rules = (state.profile.dietaryRules || []).join(', ') || 'Balanced';
+  const allergies = (state.profile.allergies || []).join(', ') || 'None';
   const prompt = `
-You are an Executive Chef & AI Nutritionist for Mo in Canton, MI (48188).
+You are an Executive Chef & Clinical Nutritionist.
 Generate ONE delicious, healthy recipe in strict JSON format (no markdown codeblocks, raw JSON object only).
 Rules:
 - Slot: ${slot} (Target: ${targetCal} kcal, ${targetProt}g protein, ${targetCarbs}g carbs, ${targetFat}g fat, ${targetFib}g fiber)
-- Requested Protein: ${protein} (STRICT RULE: NO PORK EVER. Seafood can ONLY be Shrimp or Tilapia. Prefer Halal meats).
-- Excluded items to NEVER use: ${state.profile.exclusions.join(', ')}
-- Recent meals to AVOID repeating: ${recentMeals}
-- Favorite items to consider: ${state.profile.favoriteIngredients.join(', ')}
+- Requested Protein: ${protein}
+- Dietary Rules to strictly obey: ${rules}
+- Allergies to strictly exclude: ${allergies}
+- Excluded items to NEVER use: ${(state.profile.exclusions || []).join(', ')}
+- Recent meals to AVOID repeating (must be a completely different dish!): ${recentMeals}
+- Favorite items to consider: ${(state.profile.favoriteIngredients || []).join(', ')}
 - Cuisine vibe: ${cuisine}
 - Appliance: ${appliance}
-- User note: ${note || 'Make it super flavorful'}
+- User note: ${note || 'Make it super flavorful and unique'}
 - Assign every ingredient to one of these exact 4 store strings:
   1. "Joe Randazzo's (Westland)" (for fresh fruits, vegetables, herbs)
-  2. "Greenland Market / Papaya (Canton)" (for Halal meats, Arabic groceries, pita, spices, labneh, tahini)
-  3. "Costco / Sam's Club (Canton)" (for bulk Halal meat, frozen shrimp/tilapia, eggs, Greek yogurt, bulk items)
+  2. "Greenland Market / Papaya (Canton)" (for specialty meats, international groceries, pita, spices, labneh, tahini)
+  3. "Costco / Sam's Club (Canton)" (for bulk proteins, seafood, eggs, Greek yogurt, bulk items)
   4. "Walmart / Meijer / Kroger / Target (Canton)" (for everyday packaged items)
 
 JSON Schema:
@@ -1453,7 +1784,7 @@ JSON Schema:
   "name": "Recipe Title",
   "appliance": "${appliance}",
   "prepTime": "12 mins",
-  "primaryProtein": "Chicken/Beef/Shrimp/Tilapia/Eggs",
+  "primaryProtein": "Chicken/Beef/Shrimp/Tilapia/Eggs/Plant",
   "calories": ${targetCal},
   "protein": ${targetProt},
   "carbs": ${targetCarbs},
@@ -1493,22 +1824,56 @@ JSON Schema:
 }
 
 function buildSmartLocalRecipe({ slot, protein, cuisine, appliance, note, targetCal, targetProt, targetCarbs, targetFat, targetFib }) {
-  const chosenProtein = protein === 'Any Approved'
-    ? ['Chicken', 'Beef', 'Shrimp', 'Tilapia'][Math.floor(Math.random() * 4)]
+  _singleMealGenCounter++;
+  const p = state.profile;
+  const approvedProteins = getApprovedProteinsForProfile(p);
+  const chosenProtein = (protein === 'Any Approved' || !protein)
+    ? approvedProteins[_singleMealGenCounter % approvedProteins.length]
     : protein;
 
-  const proteinStore = (chosenProtein === 'Shrimp' || chosenProtein === 'Tilapia')
+  const catalog = window.CUISINE_CATALOG || [];
+  let cuisineObj = null;
+  if (cuisine === 'My Favorites') {
+    const favIds = (p.selectedCuisines && p.selectedCuisines.length > 0) ? p.selectedCuisines : ['lebanese', 'mediterranean', 'egyptian', 'mexican', 'indian'];
+    const targetId = favIds[_singleMealGenCounter % favIds.length];
+    cuisineObj = catalog.find(c => c.id === targetId);
+  } else {
+    cuisineObj = catalog.find(c => c.name.toLowerCase() === cuisine.toLowerCase() || cuisine.toLowerCase().includes(c.id) || c.name.toLowerCase().includes(cuisine.split('/')[0].trim().toLowerCase()));
+  }
+  if (!cuisineObj) {
+    cuisineObj = catalog[_singleMealGenCounter % catalog.length] || {
+      name: cuisine || 'Mediterranean',
+      styles: ['Charred Skewers & Grain Bowl', 'Sizzling Skillet Platter', 'Crispy Flatbread Wrap', 'Garlic-Herb Roasted Bowl'],
+      spices: 'Garlic, Lemon, Herbs & Warm Spices',
+      sauces: ['Whipped Garlic-Herb Yogurt Sauce', 'Lemon-Tahini Drizzle', 'Zesty Herb Vinaigrette'],
+      carbs: ['Basmati Rice & Chickpeas', 'Roasted Baby Gold Potatoes', 'High-Fiber Artisan Wrap'],
+      veggies: ['Charred Bell Peppers, Red Onion & Greens', 'Cucumber, Roma Tomato & Fresh Parsley Salad']
+    };
+  }
+
+  const styles = cuisineObj.styles || ['Spiced Bowl', 'Sizzling Skillet', 'Grilled Platter'];
+  const sauces = cuisineObj.sauces || ['Signature Herb Sauce'];
+  const carbs = cuisineObj.carbs || ['Basmati Rice'];
+  const veggies = cuisineObj.veggies || ['Fresh Seasonal Vegetables'];
+
+  const chosenStyle = styles[_singleMealGenCounter % styles.length];
+  const chosenSauce = sauces[(_singleMealGenCounter + 1) % sauces.length];
+  const chosenCarb = carbs[(_singleMealGenCounter + 2) % carbs.length];
+  const chosenVeg = veggies[_singleMealGenCounter % veggies.length];
+
+  const proteinStore = (chosenProtein.includes('Shrimp') || chosenProtein.includes('Tilapia') || chosenProtein.includes('Salmon') || chosenProtein.includes('Egg'))
     ? "Costco / Sam's Club (Canton)"
     : "Greenland Market / Papaya (Canton)";
 
   const titleNote = note ? ` (${note})` : '';
-  const ozPortion = Math.max(3.5, Math.round((targetProt / 7.5) * 10) / 10);
+  const ozPortion = Math.max(3.5, Math.round((targetProt / 7.2) * 10) / 10);
   const gramsPortion = Math.round(ozPortion * 28.35);
 
   return {
-    id: 'local-' + Date.now(),
+    id: 'local-' + Date.now() + '-' + _singleMealGenCounter,
     slot,
-    name: `${cuisine} ${chosenProtein} Bowl — ${appliance.split('(')[0].trim()}${titleNote}`,
+    cuisine: cuisineObj.name,
+    name: `${cuisineObj.name.split('/')[0].trim()} ${chosenProtein} ${chosenStyle} with ${chosenSauce.split('&')[0].trim()}${titleNote}`,
     appliance,
     prepTime: appliance.includes('5') ? '5 mins' : '14 mins',
     primaryProtein: chosenProtein,
@@ -1519,39 +1884,44 @@ function buildSmartLocalRecipe({ slot, protein, cuisine, appliance, note, target
     fiber: targetFib || (slot.includes('Snack') ? 6 : 12),
     upgradeApplied: false,
     flavorUpgrade: {
-      name: `Add 1.5 tbsp Signature ${cuisine.split('/')[0].trim()} Garlic-Herb Sauce & Crushed Pistachios/Feta`,
-      calories: 90,
+      name: `Add Extra ${chosenSauce} & Toasted Seeds/Herbs`,
+      calories: 85,
       protein: 3,
       carbs: 3,
       fat: 7,
       fiber: 1
     },
     ingredients: [
-      { item: `Fresh ${chosenProtein}`, amount: `${ozPortion} oz (${gramsPortion}g) raw`, store: proteinStore, category: 'Halal Meat & Seafood' },
-      { item: 'Bell Peppers, Red Onion, Parsley & Lemon', amount: '1.5 cups chopped', store: "Joe Randazzo's (Westland)", category: 'Produce' },
-      { item: 'Chickpeas & Basmati Rice', amount: `${Math.round(targetCarbs * 2.5)}g cooked`, store: 'Greenland Market / Papaya (Canton)', category: 'Bread & Grains' },
-      { item: '0% Greek Yogurt & Olive Oil Marinade', amount: '2 tbsp yogurt + 1 tsp oil', store: "Costco / Sam's Club (Canton)", category: 'Dairy & Eggs' }
+      { item: `${p.dietaryRules?.includes('halal') && ['Chicken', 'Beef', 'Turkey'].includes(chosenProtein) ? 'Halal ' : ''}${chosenProtein}`, amount: `${ozPortion} oz (${gramsPortion}g) raw`, store: proteinStore, category: 'Halal Meat & Seafood' },
+      { item: chosenVeg, amount: '1.5 cups prepared', store: "Joe Randazzo's (Westland)", category: 'Produce' },
+      { item: chosenCarb, amount: `${Math.round(targetCarbs * 2.2)}g cooked`, store: 'Greenland Market / Papaya (Canton)', category: 'Bread & Grains' },
+      { item: `${cuisineObj.spices} & ${chosenSauce}`, amount: '2.5 tbsp marinade + sauce', store: "Costco / Sam's Club (Canton)", category: 'Pantry & Spices' }
     ],
     steps: [
-      `Season ${ozPortion} oz (${gramsPortion}g) of ${chosenProtein} with ${cuisine} spices, garlic, lemon juice, salt, and black pepper.`,
-      `Cook using ${appliance} for 9–12 minutes until golden brown and cooked through.`,
-      `Toss fresh vegetables from Joe Randazzo's with lemon juice, herbs, and warm beans/rice.`,
-      `Plate the sizzling ${chosenProtein} over the bowl and drizzle with chilled garlic-herb yogurt sauce.`
+      `Marinate ${ozPortion} oz (${gramsPortion}g) of ${chosenProtein} with ${cuisineObj.spices}, fresh citrus juice, and sea salt.`,
+      `Cook using ${appliance} for 9–13 minutes alongside ${chosenVeg.toLowerCase()} until charred and tender.`,
+      `Serve over warm ${chosenCarb.toLowerCase()} and finish with ${chosenSauce.toLowerCase()}.`
     ]
   };
 }
 
 // ================= WEEKLY GENERATOR MODAL =================
 function openGenerateWeekModal() {
+  if (!requireOnboardingComplete('generate a new 7-day meal plan')) return;
+
   const weekObj = getActiveWeekObj();
   const modal = document.getElementById('appModal');
   const content = document.getElementById('appModalContent');
+  const p = state.profile;
+  const favCuisines = (p.selectedCuisines || ['lebanese', 'mediterranean', 'egyptian'])
+    .map(id => (window.CUISINE_CATALOG || []).find(c => c.id === id)?.name || id)
+    .join(' • ');
 
   content.innerHTML = `
     <div class="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
       <div>
-        <h3 class="text-sm font-extrabold">✨ Refresh 7-Day Meal Plan</h3>
-        <p class="text-xs text-slate-400">${formatShortDate(weekObj.weekStartISO)} – ${formatFullDateWithYear(weekObj.weekEndISO)}</p>
+        <h3 class="text-sm font-extrabold">✨ Generate Fresh 7-Day Meal Plan</h3>
+        <p class="text-xs text-slate-400">${formatShortDate(weekObj.weekStartISO)} – ${formatFullDateWithYear(weekObj.weekEndISO)} • Never repeats last week!</p>
       </div>
       <button onclick="closeModal()" class="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-500 font-bold">✕</button>
     </div>
@@ -1560,20 +1930,22 @@ function openGenerateWeekModal() {
       <div>
         <label class="block font-semibold text-slate-400 mb-1">Cooking Style for This Week:</label>
         <select id="modalPrepStyle" class="w-full soft-input rounded-xl px-3 py-2.5 font-medium">
-          <option value="mix" ${state.profile.prepStyle === 'mix' ? 'selected' : ''}>Mix of Both (Batch + Fresh)</option>
-          <option value="batch" ${state.profile.prepStyle === 'batch' ? 'selected' : ''}>Batch Cooking (Cook 2x portions, alternate days)</option>
-          <option value="fresh" ${state.profile.prepStyle === 'fresh' ? 'selected' : ''}>Fresh Daily (15-min daily meals)</option>
+          <option value="mix" ${p.prepStyle === 'mix' ? 'selected' : ''}>Mix of Both (Batch + Fresh)</option>
+          <option value="batch" ${p.prepStyle === 'batch' ? 'selected' : ''}>Batch Cooking (Cook 2x portions, alternate days)</option>
+          <option value="fresh" ${p.prepStyle === 'fresh' ? 'selected' : ''}>Fresh Daily (15-min daily meals)</option>
         </select>
       </div>
 
-      <div class="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-900 space-y-1 text-slate-500 dark:text-slate-400">
-        <div class="font-bold text-emerald-600 dark:text-emerald-400">Active Profile Targets:</div>
-        <div>• <strong>${state.profile.calories.toLocaleString()} kcal</strong> (${state.profile.protein}g P · ${state.profile.carbs}g C · ${state.profile.fat}g F · ${state.profile.fiber}g Fib)</div>
-        <div>• Protein Rotation: Chicken → Shrimp → Beef → Tilapia</div>
+      <div class="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-900 space-y-1.5 text-slate-500 dark:text-slate-400">
+        <div class="font-bold text-emerald-600 dark:text-emerald-400">Your Active Plan Blueprint:</div>
+        <div>• <strong>${p.calories.toLocaleString()} kcal/day</strong> (${p.protein}g P · ${p.carbs}g C · ${p.fat}g F · ${p.fiber}g Fib)</div>
+        <div>• <strong>Daily Structure:</strong> ${p.mealsPerDay || 2} Main Meals + ${p.snacksPerDay ?? 2} Snacks</div>
+        <div>• <strong>Cuisines:</strong> ${favCuisines}</div>
+        <div>• <strong>Proteins:</strong> ${getApprovedProteinsForProfile(p).join(' → ')}</div>
       </div>
 
       <button onclick="confirmGenerateNewWeek()" class="w-full py-3.5 rounded-2xl bg-slate-900 dark:bg-emerald-500 text-white dark:text-slate-950 font-bold text-xs shadow-md">
-        🚀 Generate Plan & Sync Groceries
+        🚀 Generate Brand-New 7-Day Plan & Sync Groceries
       </button>
     </div>
   `;
@@ -1581,23 +1953,24 @@ function openGenerateWeekModal() {
 }
 
 function confirmGenerateNewWeek() {
-  const style = document.getElementById('modalPrepStyle').value;
+  if (!requireOnboardingComplete('generate a new 7-day meal plan')) return;
+  const style = document.getElementById('modalPrepStyle')?.value || state.profile.prepStyle || 'mix';
   state.profile.prepStyle = style;
   ensureWeekExists(state.activeWeekMondayISO, true, style);
   state.checkedGroceries = {};
   saveState();
   closeModal();
   renderAll();
-  showToast(`✨ Refreshed 7-day plan & synced Groceries!`);
+  showToast(`✨ Generated 7 brand-new days of meals & synced Groceries!`);
 }
 
 async function generateAiReplacementForSlot(dayIdx, mealIdx) {
+  if (!requireOnboardingComplete('swap or generate meals')) return;
   const days = getActiveWeekDays();
   const current = days[dayIdx].meals[mealIdx];
   const dayProtein = days[dayIdx].primaryProtein;
-  const isMeal1 = mealIdx === 0;
-  const isDinner = mealIdx === 1;
-  const ratio = isMeal1 ? 0.27 : isDinner ? 0.48 : 0.125;
+  const slotDefs = getDailySlotDefinitions(state.profile);
+  const ratio = slotDefs[mealIdx]?.ratio || 0.25;
 
   const targetCal = Math.round(state.profile.calories * ratio);
   const targetProt = Math.round(state.profile.protein * ratio);
@@ -1605,25 +1978,22 @@ async function generateAiReplacementForSlot(dayIdx, mealIdx) {
   const targetFat = Math.round(state.profile.fat * ratio);
   const targetFib = Math.round(state.profile.fiber * ratio);
 
-  const cuisines = ['Arabic / Mediterranean', 'Mexican / Southwest', 'Asian / Stir-Fry', 'Garlic-Herb Grillhouse'];
-  const cuisine = cuisines[Math.floor(Math.random() * cuisines.length)];
-
   let newMeal;
   if (state.profile.geminiApiKey && state.profile.geminiApiKey.trim().length > 10) {
     try {
       newMeal = await callGeminiSingleRecipe({
         slot: current.slot,
-        protein: isDinner ? dayProtein : 'Any Approved',
-        cuisine,
+        protein: dayProtein || 'Any Approved',
+        cuisine: 'My Favorites',
         appliance: 'Air Fryer (14 mins)',
-        note: `Must be different from ${current.name}`,
+        note: `Must be completely different from ${current.name}`,
         targetCal, targetProt, targetCarbs, targetFat, targetFib
       });
     } catch (e) {
       newMeal = buildSmartLocalRecipe({
         slot: current.slot,
-        protein: isDinner ? dayProtein : 'Chicken',
-        cuisine,
+        protein: 'Any Approved',
+        cuisine: 'My Favorites',
         appliance: 'Air Fryer (14 mins)',
         note: '',
         targetCal, targetProt, targetCarbs, targetFat, targetFib
@@ -1632,8 +2002,8 @@ async function generateAiReplacementForSlot(dayIdx, mealIdx) {
   } else {
     newMeal = buildSmartLocalRecipe({
       slot: current.slot,
-      protein: isDinner ? dayProtein : 'Chicken',
-      cuisine,
+      protein: 'Any Approved',
+      cuisine: 'My Favorites',
       appliance: 'Air Fryer (14 mins)',
       note: '',
       targetCal, targetProt, targetCarbs, targetFat, targetFib
@@ -1884,6 +2254,7 @@ function renderProfileAndProgressTab() {
 
   recalcBodyCompProjections('init');
   renderProgressLogsList();
+  renderProfilePreferencesCard();
 
   document.getElementById('geminiKeyInput').value = p.geminiApiKey || '';
 
@@ -1955,17 +2326,39 @@ function saveProfileOnlyAndLogSnapshot() {
   p.heightFt = parseInt(document.getElementById('profHeightFt').value, 10) || 5;
   p.heightIn = parseInt(document.getElementById('profHeightIn').value, 10) || 7;
   p.age = parseInt(document.getElementById('profAge').value, 10) || 42;
-  p.bodyFatPct = parseFloat(document.getElementById('profBodyFat').value) || 23;
-  p.muscleMassLbs = parseFloat(document.getElementById('profMuscleMass').value) || 75;
+
+  const rawBf = parseFloat(document.getElementById('profBodyFat').value);
+  const rawMuscle = parseFloat(document.getElementById('profMuscleMass').value);
+  const sciEst = computeScientificMacros({
+    ...p,
+    bodyFatPct: !isNaN(rawBf) && rawBf > 3 ? rawBf : '',
+    muscleMassLbs: !isNaN(rawMuscle) && rawMuscle > 20 ? rawMuscle : ''
+  });
+
+  p.bodyFatPct = !isNaN(rawBf) && rawBf > 3 ? rawBf : sciEst.estimatedBfPct;
+  p.muscleMassLbs = !isNaN(rawMuscle) && rawMuscle > 20 ? rawMuscle : sciEst.muscleLbs;
+
   const wst = parseFloat(document.getElementById('profWaist').value);
   p.waistIn = !isNaN(wst) ? wst : '';
   p.activityMultiplier = parseFloat(document.getElementById('profActivity').value) || 1.375;
   p.workoutsPerWeek = parseInt(document.getElementById('profWorkouts').value, 10) || 3;
   p.goalType = document.getElementById('profGoal').value;
 
+  // Automatically recalculate daily calories & macros when body metrics or optional details are updated!
+  const updatedSci = computeScientificMacros(p);
+  p.calories = updatedSci.calories;
+  p.protein = updatedSci.protein;
+  p.carbs = updatedSci.carbs;
+  p.fat = updatedSci.fat;
+  p.fiber = updatedSci.fiber;
+
+  if (state.weeksByStartISO[state.activeWeekMondayISO]?.days) {
+    state.weeksByStartISO[state.activeWeekMondayISO].days.forEach(d => balanceDayToTarget(d, p));
+  }
+
   const todayISO = formatDateISO(new Date());
   const topLog = state.progressLogs[0];
-  const noteStr = `${p.currentWeight} lbs · ${p.bodyFatPct}% BF · ${p.muscleMassLbs} lbs Muscle`;
+  const noteStr = `${p.currentWeight} lbs · ${p.bodyFatPct}% BF · ${p.muscleMassLbs} lbs Muscle → ${p.calories} kcal`;
 
   if (topLog && topLog.dateISO === todayISO) {
     topLog.weight = p.currentWeight;
@@ -1984,8 +2377,165 @@ function saveProfileOnlyAndLogSnapshot() {
   }
 
   saveState();
-  renderProfileAndProgressTab();
-  showToast(`💾 Saved (${p.currentWeight} lbs, ${p.bodyFatPct}% BF)!`);
+  renderAll();
+  showToast(`💾 Updated stats & recalculated plan (${p.calories.toLocaleString()} kcal, ${p.protein}g P)!`);
+}
+
+function renderProfilePreferencesCard() {
+  const card = document.getElementById('profilePreferencesCard');
+  if (!card) return;
+  const p = state.profile;
+  const selCuisines = p.selectedCuisines || ['lebanese', 'mediterranean', 'egyptian', 'mexican', 'indian'];
+  const selRules = p.dietaryRules || [];
+  const selAllergies = p.allergies || [];
+
+  card.innerHTML = `
+    <div class="flex items-center justify-between">
+      <div>
+        <h3 class="text-sm font-bold">🍽️ Meal Structure, Cuisines & Dietary Rules</h3>
+        <p class="text-[11px] text-slate-400">Customize how your weekly plans & cravings are generated</p>
+      </div>
+      <span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400">${selCuisines.length}/5 Cuisines</span>
+    </div>
+
+    <div class="grid grid-cols-2 sm:grid-cols-3 gap-2.5 text-xs pt-1">
+      <div>
+        <label class="block text-[10px] font-semibold text-slate-400 mb-1">Main Meals / Day</label>
+        <select id="profMealsPerDay" class="w-full soft-input rounded-xl px-2.5 py-2 font-bold">
+          <option value="1" ${(p.mealsPerDay || 2) === 1 ? 'selected' : ''}>1 Main Meal (OMAD)</option>
+          <option value="2" ${(p.mealsPerDay || 2) === 2 ? 'selected' : ''}>2 Main Meals (IF / 16:8)</option>
+          <option value="3" ${(p.mealsPerDay || 2) === 3 ? 'selected' : ''}>3 Main Meals (B/L/D)</option>
+          <option value="4" ${(p.mealsPerDay || 2) === 4 ? 'selected' : ''}>4 Athlete Meals</option>
+        </select>
+      </div>
+      <div>
+        <label class="block text-[10px] font-semibold text-slate-400 mb-1">Snacks / Day</label>
+        <select id="profSnacksPerDay" class="w-full soft-input rounded-xl px-2.5 py-2 font-bold">
+          <option value="0" ${(p.snacksPerDay ?? 2) === 0 ? 'selected' : ''}>0 Snacks</option>
+          <option value="1" ${(p.snacksPerDay ?? 2) === 1 ? 'selected' : ''}>1 Daily Snack</option>
+          <option value="2" ${(p.snacksPerDay ?? 2) === 2 ? 'selected' : ''}>2 Daily Snacks</option>
+          <option value="3" ${(p.snacksPerDay ?? 2) === 3 ? 'selected' : ''}>3 Daily Snacks</option>
+        </select>
+      </div>
+      <div class="col-span-2 sm:col-span-1">
+        <label class="block text-[10px] font-semibold text-slate-400 mb-1">Spice & Flavor Level</label>
+        <select id="profSpiceLevel" class="w-full soft-input rounded-xl px-2.5 py-2 font-bold">
+          <option value="mild" ${p.spiceLevel === 'mild' ? 'selected' : ''}>🌿 Mild & Clean</option>
+          <option value="medium" ${(!p.spiceLevel || p.spiceLevel === 'medium') ? 'selected' : ''}>✨ Medium Balanced</option>
+          <option value="spicy" ${p.spiceLevel === 'spicy' ? 'selected' : ''}>🌶️ Bold & Spicy</option>
+        </select>
+      </div>
+    </div>
+
+    <details class="group pt-2 border-t border-slate-100 dark:border-slate-800">
+      <summary class="cursor-pointer py-1.5 text-xs font-bold text-slate-600 dark:text-slate-300 flex items-center justify-between select-none">
+        <span>🌍 Edit Favorite World Cuisines (Up to 5) & Diet Filters</span>
+        <span class="text-slate-400 group-open:rotate-180 transition-transform">▼</span>
+      </summary>
+      <div class="pt-3 space-y-3 text-xs">
+        <div>
+          <div class="text-[11px] font-bold text-emerald-600 dark:text-emerald-400 mb-1.5">Favorite Cuisines (Tap up to 5):</div>
+          <div class="flex flex-wrap gap-1.5">
+            ${(window.CUISINE_CATALOG || []).map(c => {
+              const active = selCuisines.includes(c.id);
+              return `
+                <button type="button" onclick="toggleProfileCuisine('${c.id}')" class="px-2.5 py-1.5 rounded-xl text-[11px] font-semibold border transition ${
+                  active
+                    ? 'bg-emerald-600 text-white border-emerald-500 shadow-sm'
+                    : 'bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300'
+                }">${c.icon} ${c.name}</button>
+              `;
+            }).join('')}
+          </div>
+        </div>
+
+        <div>
+          <div class="text-[11px] font-bold text-sky-600 dark:text-sky-400 mb-1.5">Dietary Lifestyle & Religious Rules:</div>
+          <div class="flex flex-wrap gap-1.5">
+            ${(window.DIETARY_CATALOG || []).map(d => {
+              const active = selRules.includes(d.id);
+              return `
+                <button type="button" onclick="toggleProfileDietRule('${d.id}')" class="px-2.5 py-1.5 rounded-xl text-[11px] font-semibold border transition ${
+                  active
+                    ? 'bg-sky-600 text-white border-sky-500 shadow-sm'
+                    : 'bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300'
+                }">${d.icon} ${d.label}</button>
+              `;
+            }).join('')}
+          </div>
+        </div>
+
+        <div>
+          <div class="text-[11px] font-bold text-amber-600 dark:text-amber-400 mb-1.5">Allergies & Intolerances:</div>
+          <div class="flex flex-wrap gap-1.5">
+            ${(window.ALLERGY_CATALOG || []).map(a => {
+              const active = selAllergies.includes(a.id);
+              return `
+                <button type="button" onclick="toggleProfileAllergy('${a.id}')" class="px-2.5 py-1.5 rounded-xl text-[11px] font-semibold border transition ${
+                  active
+                    ? 'bg-amber-500 text-slate-950 border-amber-400 shadow-sm'
+                    : 'bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300'
+                }">${a.icon} ${a.label}</button>
+              `;
+            }).join('')}
+          </div>
+        </div>
+      </div>
+    </details>
+
+    <button onclick="saveProfileMealStructureAndRegenerate()" class="w-full py-2.5 rounded-xl bg-slate-900 dark:bg-emerald-500 text-white dark:text-slate-950 font-bold text-xs transition">
+      💾 Save Preferences & Generate Fresh 7-Day Plan
+    </button>
+  `;
+}
+
+function toggleProfileCuisine(cid) {
+  const list = state.profile.selectedCuisines || [];
+  const idx = list.indexOf(cid);
+  if (idx >= 0) {
+    if (list.length <= 1) {
+      showToast('Keep at least 1 favorite cuisine selected!');
+      return;
+    }
+    list.splice(idx, 1);
+  } else {
+    if (list.length >= 5) {
+      showToast('You can select up to 5 favorite cuisines! Deselect one first.');
+      return;
+    }
+    list.push(cid);
+  }
+  state.profile.selectedCuisines = list;
+  renderProfilePreferencesCard();
+}
+
+function toggleProfileDietRule(rid) {
+  const list = state.profile.dietaryRules || [];
+  const idx = list.indexOf(rid);
+  if (idx >= 0) list.splice(idx, 1);
+  else list.push(rid);
+  state.profile.dietaryRules = list;
+  renderProfilePreferencesCard();
+}
+
+function toggleProfileAllergy(aid) {
+  const list = state.profile.allergies || [];
+  const idx = list.indexOf(aid);
+  if (idx >= 0) list.splice(idx, 1);
+  else list.push(aid);
+  state.profile.allergies = list;
+  renderProfilePreferencesCard();
+}
+
+function saveProfileMealStructureAndRegenerate() {
+  const p = state.profile;
+  p.mealsPerDay = parseInt(document.getElementById('profMealsPerDay')?.value, 10) || 2;
+  p.snacksPerDay = parseInt(document.getElementById('profSnacksPerDay')?.value, 10) ?? 2;
+  p.spiceLevel = document.getElementById('profSpiceLevel')?.value || 'medium';
+  ensureWeekExists(state.activeWeekMondayISO, true, p.prepStyle);
+  saveState();
+  renderAll();
+  showToast(`✨ Updated to ${p.mealsPerDay} Meals + ${p.snacksPerDay} Snacks & generated fresh week!`);
 }
 
 function renderProgressLogsList() {
@@ -2026,18 +2576,27 @@ function deleteProgressCheckIn(id) {
 function computeScientificMacros(p = state.profile) {
   const weightLbs = parseFloat(p.currentWeight) || 170;
   const weightKg = weightLbs * 0.45359237;
-  const heightInches = ((parseFloat(p.heightFt) || 5) * 12) + (parseFloat(p.heightIn) || 7);
+  const heightInches = ((parseFloat(p.heightFt) || 5) * 12) + (parseFloat(p.heightIn) ?? 7);
   const heightCm = heightInches * 2.54;
-  const age = parseFloat(p.age) || 42;
-  const bf = parseFloat(p.bodyFatPct) || 23;
-  const muscleLbs = parseFloat(p.muscleMassLbs) || 75;
-  const goalW = parseFloat(p.goalWeight) || 160;
-  const act = parseFloat(p.activityMultiplier) || 1.375;
-  const workouts = parseFloat(p.workoutsPerWeek) || 3;
+  const heightM = Math.max(1.2, heightCm / 100);
+  const age = parseFloat(p.age) || 34;
+
+  // Estimate Body Fat % from BMI, age, and biological sex if left blank/optional
+  const bmi = weightKg / (heightM * heightM);
+  const isMale = p.sex !== 'female';
+  const estimatedBfPct = Math.max(8, Math.min(48, +(1.20 * bmi + 0.23 * age - (isMale ? 10.8 : 0) - 5.4).toFixed(1)));
+  const rawBf = parseFloat(p.bodyFatPct);
+  const bf = (!isNaN(rawBf) && rawBf > 3 && rawBf < 60) ? rawBf : estimatedBfPct;
 
   const fatMassLbs = +(weightLbs * (bf / 100)).toFixed(1);
   const leanMassLbs = +(weightLbs - fatMassLbs).toFixed(1);
   const leanMassKg = leanMassLbs * 0.45359237;
+
+  const rawMuscle = parseFloat(p.muscleMassLbs);
+  const muscleLbs = (!isNaN(rawMuscle) && rawMuscle > 20) ? rawMuscle : +(leanMassLbs * 0.57).toFixed(1);
+  const goalW = parseFloat(p.goalWeight) || Math.max(105, Math.round(weightLbs - 10));
+  const act = parseFloat(p.activityMultiplier) || 1.375;
+  const workouts = parseFloat(p.workoutsPerWeek) ?? 3;
 
   const bmrKatch = Math.round(370 + (21.6 * leanMassKg));
   const sexOffset = p.sex === 'female' ? -161 : 5;
@@ -2075,6 +2634,7 @@ function computeScientificMacros(p = state.profile) {
   const estWeeksToGoal = lbsToLose > 0 && actualDailyDeficit > 0 ? Math.ceil(lbsToLose / weeklyFatLossLbs) : 0;
 
   return {
+    estimatedBfPct: bf,
     fatMassLbs, leanMassLbs, muscleLbs, bmrKatch, bmrMifflin, bmrAvg, tdee,
     goalLabel, actualDailyDeficit, weeklyFatLossLbs, estWeeksToGoal,
     calories: targetCal, protein: recProtein, carbs: recCarbs, fat: recFat, fiber: recFiber
@@ -2432,22 +2992,32 @@ function startAutoCloudSyncPolling() {
   }, 6000);
 }
 
-// ================= MULTI-USER SIGN IN, ACCOUNT SWITCHER & INTERACTIVE FAMILY ONBOARDING =================
+// ================= MULTI-USER SIGN IN, ACCOUNT SWITCHER & 5-STEP UNIVERSAL ONBOARDING =================
 let onboardingDraft = {
   step: 1,
   tourSlide: 0,
   displayName: '',
   username: '',
   pin: '',
+  mealsPerDay: 2,
+  snacksPerDay: 2,
+  prepStyle: 'mix',
+  spiceLevel: 'medium',
+  equipment: ['Air Fryer', 'Stovetop', 'Oven'],
+  selectedCuisines: ['mediterranean', 'lebanese', 'egyptian', 'indian', 'mexican'],
+  dietaryRules: ['halal', 'pork_free'],
+  allergies: [],
+  customExclusionsText: '',
   sex: 'male',
   age: 34,
   heightFt: 5,
   heightIn: 8,
   currentWeight: 175,
   goalWeight: 160,
-  bodyFatPct: 22,
-  goalBodyFatPct: 16.5,
-  muscleMassLbs: 72,
+  bodyFatPct: '',
+  goalBodyFatPct: '',
+  muscleMassLbs: '',
+  waistIn: '',
   activityMultiplier: 1.375,
   workoutsPerWeek: 3,
   goalType: 'cut_moderate'
@@ -2540,17 +3110,17 @@ const APP_TOUR_SLIDES = [
   }
 ];
 
-// Exact chapter timestamps (seconds) in intro-video.mp4 (v3)
+// Exact chapter timestamps (seconds) in intro-video.mp4 (v4)
 const VIDEO_CHAPTERS = [
-  { label: '1. Why Different', time: 0.0 },
-  { label: '2. Body Science', time: 17.4 },
-  { label: '3. Daily Variety', time: 33.4 },
-  { label: '4. Store Sync', time: 50.5 }
+  { label: '1. Flipped Tracking', time: 0.0 },
+  { label: '2. Preferences', time: 21.0 },
+  { label: '3. Body & Variety', time: 39.6 },
+  { label: '4. Smart Groceries', time: 56.8 }
 ];
 
-const PUBLIC_APP_URL = 'https://mohammadshehab-ship-it.github.io/mo-meal-prep/';
+const PUBLIC_APP_URL = 'https://mohammadshehab-ship-it.github.io/mo-meal-prep/?invite=1';
 const PUBLIC_INVITE_URL = 'https://mohammadshehab-ship-it.github.io/mo-meal-prep/?invite=1';
-const PUBLIC_VIDEO_URL = 'https://mohammadshehab-ship-it.github.io/mo-meal-prep/intro-video.mp4?v=3';
+const PUBLIC_VIDEO_URL = 'https://mohammadshehab-ship-it.github.io/mo-meal-prep/intro-video.mp4?v=4';
 
 let cachedIntroVideoFile = null;
 let introVideoPreloadPromise = null;
@@ -2558,7 +3128,7 @@ let introVideoPreloadPromise = null;
 function preloadIntroVideoForShare() {
   if (cachedIntroVideoFile) return Promise.resolve(cachedIntroVideoFile);
   if (introVideoPreloadPromise) return introVideoPreloadPromise;
-  introVideoPreloadPromise = fetch('./intro-video.mp4?v=3')
+  introVideoPreloadPromise = fetch('./intro-video.mp4?v=4')
     .then((resp) => (resp && resp.ok ? resp.blob() : null))
     .then((blob) => {
       if (blob) {
@@ -2712,7 +3282,7 @@ async function copyFamilyOnboardingLink() {
 
 function downloadIntroVideoMp4() {
   const a = document.createElement('a');
-  a.href = './intro-video.mp4?v=3';
+  a.href = './intro-video.mp4?v=4';
   a.download = 'Meal-Prep-Studio-Intro.mp4';
   document.body.appendChild(a);
   a.click();
@@ -2748,7 +3318,7 @@ function buildInfographicVideoPlayerHTML() {
       <div class="relative rounded-2xl overflow-hidden bg-black border border-slate-800/80 aspect-video">
         <video
           id="introVideoPlayerEl"
-          src="./intro-video.mp4?v=3"
+          src="./intro-video.mp4?v=4"
           controls
           playsinline
           preload="auto"
@@ -2916,26 +3486,57 @@ async function handleUserSignIn() {
 function startFamilyOnboarding() {
   const overlay = document.getElementById('authOverlay');
   if (overlay) overlay.classList.remove('hidden');
+  document.title = 'Meal Prep Studio — Welcome & Onboarding';
   onboardingDraft = {
     step: 1,
     tourSlide: 0,
     displayName: '',
     username: '',
     pin: '',
+    mealsPerDay: 2,
+    snacksPerDay: 2,
+    prepStyle: 'mix',
+    spiceLevel: 'medium',
+    equipment: ['Air Fryer', 'Stovetop', 'Oven'],
+    selectedCuisines: ['mediterranean', 'lebanese', 'egyptian', 'indian', 'mexican'],
+    dietaryRules: ['halal', 'pork_free'],
+    allergies: [],
+    customExclusionsText: '',
     sex: 'male',
     age: 34,
     heightFt: 5,
     heightIn: 8,
     currentWeight: 175,
     goalWeight: 160,
-    bodyFatPct: 22,
-    goalBodyFatPct: 16.5,
-    muscleMassLbs: 72,
+    bodyFatPct: '',
+    goalBodyFatPct: '',
+    muscleMassLbs: '',
+    waistIn: '',
     activityMultiplier: 1.375,
     workoutsPerWeek: 3,
     goalType: 'cut_moderate'
   };
   renderOnboardingStep();
+}
+
+function renderOnboardingProgressHeader(stepNum, stepTitle, backStep = null) {
+  const pct = Math.round((stepNum / 5) * 100);
+  return `
+    <div class="space-y-2">
+      <div class="flex items-center justify-between">
+        <span class="text-[10px] font-extrabold uppercase tracking-wider px-2.5 py-1 rounded-full bg-emerald-50 dark:bg-emerald-500/15 text-emerald-600 dark:text-emerald-400">
+          Step ${stepNum} of 5 • ${stepTitle}
+        </span>
+        ${backStep
+          ? `<button type="button" onclick="onboardingDraft.step=${backStep}; renderOnboardingStep();" class="text-xs text-slate-400 hover:text-slate-600 font-semibold">◀ Back</button>`
+          : `<button type="button" onclick="stopInfographicVideo(); openAuthOverlay('signin');" class="text-xs text-emerald-600 dark:text-emerald-400 hover:underline font-bold">Already have a username? Sign In →</button>`
+        }
+      </div>
+      <div class="h-1.5 w-full bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+        <div class="h-full bg-emerald-500 rounded-full transition-all duration-300" style="width:${pct}%"></div>
+      </div>
+    </div>
+  `;
 }
 
 function renderOnboardingStep(keepPlaying = false) {
@@ -2945,225 +3546,406 @@ function renderOnboardingStep(keepPlaying = false) {
 
   const s = onboardingDraft.step;
 
-  // STEP 1 (Unified): CREATE USERNAME & 4-DIGIT PIN + WATCH 1-MIN INTRO VIDEO
-  if (s === 1 || s === 2) {
+  // STEP 1 OF 5: WATCH INTRO VIDEO + CREATE USERNAME & 4-DIGIT PIN
+  if (s === 1) {
     container.innerHTML = `
-      <div class="soft-card rounded-3xl p-5 sm:p-6 space-y-5">
-        <div class="flex items-center justify-between">
-          <span class="text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full bg-emerald-50 dark:bg-emerald-500/15 text-emerald-600 dark:text-emerald-400">
-            Step 1 of 3 • Create Your Username
-          </span>
-          <button onclick="stopInfographicVideo(); openAuthOverlay('signin');" class="text-xs text-slate-400 hover:text-emerald-500 font-semibold">
-            Already have a username? Sign In →
-          </button>
-        </div>
+      <div class="soft-card rounded-3xl p-5 sm:p-6 space-y-4">
+        ${renderOnboardingProgressHeader(1, 'Watch Intro & Create Username', null)}
 
         <div>
-          <h2 class="text-xl font-extrabold tracking-tight">Create Your Personal Account</h2>
-          <p class="text-xs text-slate-400 mt-1">
-            Choose your own username and 4-digit PIN. Your calorie targets, meal plan, and grocery list are stored privately under your username.
-          </p>
-        </div>
-
-        <div class="space-y-3 text-xs">
-          <div>
-            <label class="block font-bold text-slate-600 dark:text-slate-300 mb-1">1. Create a Username (Your First Name)</label>
-            <input id="obName" type="text" value="${onboardingDraft.displayName}" placeholder="e.g., Sarah, Ahmad, Nora..." class="w-full soft-input rounded-2xl px-4 py-3 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500" />
-          </div>
-
-          <div>
-            <label class="block font-bold text-slate-600 dark:text-slate-300 mb-1">2. Choose a 4-Digit Security PIN</label>
-            <input id="obPin" type="password" inputmode="numeric" maxlength="6" value="${onboardingDraft.pin}" placeholder="e.g., 1234" onkeydown="if(event.key==='Enter') submitOnboardingStep2()" class="w-full soft-input rounded-2xl px-4 py-3 text-sm font-extrabold tracking-widest focus:outline-none focus:ring-2 focus:ring-emerald-500" />
-          </div>
-
-          <div id="obStep2Err" class="hidden text-xs text-rose-500 font-semibold bg-rose-500/10 p-2.5 rounded-xl"></div>
-        </div>
-
-        <button id="btnObStep2" onclick="submitOnboardingStep2()" class="w-full py-3.5 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-xs shadow-lg shadow-emerald-600/20 transition">
-          🚀 Create Username & Set Body Goals ▶
-        </button>
-
-        <div class="pt-3 border-t border-slate-100 dark:border-slate-800 space-y-2.5">
-          <div class="flex items-center justify-between text-[11px]">
-            <span class="font-bold text-slate-600 dark:text-slate-300">🎬 Watch: How Meal Prep Studio Works (1-Min Video)</span>
-          </div>
-          ${buildInfographicVideoPlayerHTML()}
-        </div>
-      </div>
-    `;
-    return;
-  }
-
-  // STEP 3: BODY METRICS & WHY WE NEED THEM
-  if (s === 3) {
-    container.innerHTML = `
-      <div class="soft-card rounded-3xl p-6 sm:p-7 space-y-4">
-        <div class="flex items-center justify-between">
-          <span class="text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full bg-emerald-50 dark:bg-emerald-500/15 text-emerald-600 dark:text-emerald-400">
-            Step 2 of 3 • Body Metrics & Metabolism
-          </span>
-          <button onclick="onboardingDraft.step=1; renderOnboardingStep();" class="text-xs text-slate-400 font-semibold">◀ Back</button>
-        </div>
-
-        <div>
-          <h2 class="text-lg font-extrabold">Tell Us About Your Body, ${onboardingDraft.displayName}</h2>
+          <h2 class="text-lg sm:text-xl font-extrabold tracking-tight">We Flipped Nutrition Tracking Upside Down</h2>
           <p class="text-xs text-slate-400 mt-0.5">
-            Why do we ask for these? Every calorie and gram of protein in your meal plan is calculated from your resting metabolic rate (BMR) and lean muscle mass.
+            Tired of scanning barcodes and taking photos of your food? Watch the 1-minute video below and create your username to build a custom meal plan that hits your calories & macros automatically.
           </p>
         </div>
 
-        <div class="grid grid-cols-2 gap-3 text-xs">
-          <div>
-            <label class="block font-bold mb-1">Biological Sex</label>
-            <select id="obSex" class="w-full soft-input rounded-xl px-3 py-2.5 font-semibold">
-              <option value="male" ${onboardingDraft.sex === 'male' ? 'selected' : ''}>Male (+5 BMR constant)</option>
-              <option value="female" ${onboardingDraft.sex === 'female' ? 'selected' : ''}>Female (-161 BMR constant)</option>
-            </select>
-          </div>
-          <div>
-            <label class="block font-bold mb-1">Age (Years)</label>
-            <input id="obAge" type="number" value="${onboardingDraft.age}" class="w-full soft-input rounded-xl px-3 py-2.5 font-bold" />
-          </div>
+        ${buildInfographicVideoPlayerHTML()}
 
-          <div>
-            <label class="block font-bold mb-1">Height (Feet & Inches)</label>
-            <div class="flex gap-1.5">
-              <input id="obHeightFt" type="number" value="${onboardingDraft.heightFt}" placeholder="5 ft" class="w-1/2 soft-input rounded-xl px-2.5 py-2.5 font-bold" />
-              <input id="obHeightIn" type="number" value="${onboardingDraft.heightIn}" placeholder="8 in" class="w-1/2 soft-input rounded-xl px-2.5 py-2.5 font-bold" />
+        <div class="pt-2 border-t border-slate-100 dark:border-slate-800 space-y-3 text-xs">
+          <div class="font-extrabold text-sm text-slate-800 dark:text-white">✨ Create Your Personal Username</div>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+            <div>
+              <label class="block font-bold text-slate-600 dark:text-slate-300 mb-1">1. Choose a Username / First Name *</label>
+              <input id="obName" type="text" value="${onboardingDraft.displayName}" placeholder="e.g., Sarah, Ahmad, Nora..." class="w-full soft-input rounded-2xl px-3.5 py-2.5 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+            </div>
+            <div>
+              <label class="block font-bold text-slate-600 dark:text-slate-300 mb-1">2. Choose a 4-Digit Security PIN *</label>
+              <input id="obPin" type="password" inputmode="numeric" maxlength="6" value="${onboardingDraft.pin}" placeholder="e.g., 1234" onkeydown="if(event.key==='Enter') submitOnboardingStep1()" class="w-full soft-input rounded-2xl px-3.5 py-2.5 text-sm font-extrabold tracking-widest focus:outline-none focus:ring-2 focus:ring-emerald-500" />
             </div>
           </div>
 
-          <div>
-            <label class="block font-bold text-emerald-600 dark:text-emerald-400 mb-1">Current Weight (lbs)</label>
-            <input id="obWeight" type="number" step="0.1" value="${onboardingDraft.currentWeight}" class="w-full soft-input rounded-xl px-3 py-2.5 font-extrabold" />
-          </div>
+          <div id="obStep1Err" class="hidden text-xs text-rose-500 font-semibold bg-rose-500/10 p-2.5 rounded-xl"></div>
 
-          <div>
-            <label class="block font-bold text-amber-600 dark:text-amber-400 mb-1">Est. Body Fat % (If known)</label>
-            <input id="obBf" type="number" step="0.1" value="${onboardingDraft.bodyFatPct}" placeholder="e.g. 22%" class="w-full soft-input rounded-xl px-3 py-2.5 font-bold" />
-            <span class="text-[10px] text-slate-400">Typical: Men 15–25%, Women 22–32%</span>
-          </div>
-
-          <div>
-            <label class="block font-bold text-purple-500 mb-1">Muscle Mass (lbs, Opt)</label>
-            <input id="obMuscle" type="number" step="0.1" value="${onboardingDraft.muscleMassLbs}" placeholder="Optional" class="w-full soft-input rounded-xl px-3 py-2.5 font-bold" />
-            <span class="text-[10px] text-slate-400">Auto-estimated if left as-is</span>
-          </div>
+          <button id="btnObStep1" onclick="submitOnboardingStep1()" class="w-full py-3.5 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-xs shadow-lg shadow-emerald-600/20 transition">
+            Next: Structure My Daily Meals & Snacks (Step 2 of 5) ▶
+          </button>
         </div>
-
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs pt-1">
-          <div>
-            <label class="block font-bold mb-1">Daily Lifestyle Activity</label>
-            <select id="obActivity" class="w-full soft-input rounded-xl px-3 py-2.5">
-              <option value="1.2">Sedentary (Desk job)</option>
-              <option value="1.375" selected>Lightly Active (Daily movement)</option>
-              <option value="1.55">Moderately Active (On feet daily)</option>
-              <option value="1.725">Very Active (Hard physical training)</option>
-            </select>
-          </div>
-          <div>
-            <label class="block font-bold mb-1">Workouts per Week</label>
-            <select id="obWorkouts" class="w-full soft-input rounded-xl px-3 py-2.5">
-              <option value="0">0–1 days / week</option>
-              <option value="3" selected>2–3 days / week</option>
-              <option value="4">4–5 days / week</option>
-              <option value="6">6+ days / week</option>
-            </select>
-          </div>
-        </div>
-
-        <button onclick="submitOnboardingStep3()" class="w-full py-3.5 rounded-2xl bg-slate-900 dark:bg-emerald-500 text-white dark:text-slate-950 font-extrabold text-xs shadow-md">
-          Continue to Goal & Macro Calculation (Step 3 of 3) ▶
-        </button>
       </div>
     `;
     return;
   }
 
-  // STEP 4: GOAL SELECTION & SCIENTIFIC MACRO REVEAL
-  if (s === 4) {
-    const sci = computeScientificMacros(onboardingDraft);
+  // STEP 2 OF 5: DAILY MEAL STRUCTURE, SNACKS & COOKING LIFESTYLE
+  if (s === 2) {
+    const previewSlots = getDailySlotDefinitions(onboardingDraft);
+    const allAppliances = ['Air Fryer', 'Stovetop', 'Oven', 'Instant Pot', 'Grill', 'Blender', 'No-Cook / Microwave'];
     container.innerHTML = `
-      <div class="soft-card rounded-3xl p-6 sm:p-7 space-y-4">
-        <div class="flex items-center justify-between">
-          <span class="text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full bg-emerald-50 dark:bg-emerald-500/15 text-emerald-600 dark:text-emerald-400">
-            Step 3 of 3 • Your Custom Nutrition Blueprint
-          </span>
-          <button onclick="onboardingDraft.step=3; renderOnboardingStep();" class="text-xs text-slate-400 font-semibold">◀ Back</button>
-        </div>
+      <div class="soft-card rounded-3xl p-5 sm:p-6 space-y-4">
+        ${renderOnboardingProgressHeader(2, 'Daily Meal & Snack Structure', 1)}
 
         <div>
-          <h2 class="text-lg font-extrabold">Your Scientific Plan is Ready, ${onboardingDraft.displayName}!</h2>
+          <h2 class="text-lg font-extrabold">How Do You Want to Structure Your Day, ${onboardingDraft.displayName}?</h2>
           <p class="text-xs text-slate-400 mt-0.5">
-            Adjust your Target Goal Weight or Strategy below and watch your personalized daily calories and macros update live:
+            Every meal and snack is automatically portioned so the sum of your day hits 100% of your calorie and macro goals without logging a single bite.
           </p>
         </div>
 
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
           <div>
-            <label class="block font-bold text-emerald-600 dark:text-emerald-400 mb-1">Target Goal Weight (lbs)</label>
-            <input id="obGoalWeight" type="number" step="0.1" value="${onboardingDraft.goalWeight}" onchange="onboardingDraft.goalWeight=parseFloat(this.value)||160; renderOnboardingStep();" class="w-full soft-input rounded-xl px-3 py-2.5 font-extrabold" />
+            <label class="block font-bold text-emerald-600 dark:text-emerald-400 mb-1">1. Main Meals Per Day *</label>
+            <select id="obMealsPerDay" onchange="onboardingDraft.mealsPerDay=parseInt(this.value,10); renderOnboardingStep();" class="w-full soft-input rounded-xl px-3 py-2.5 font-bold">
+              <option value="1" ${onboardingDraft.mealsPerDay === 1 ? 'selected' : ''}>1 Main Meal / Day (OMAD / Warrior)</option>
+              <option value="2" ${onboardingDraft.mealsPerDay === 2 ? 'selected' : ''}>2 Main Meals / Day (Intermittent Fasting / 16:8)</option>
+              <option value="3" ${onboardingDraft.mealsPerDay === 3 ? 'selected' : ''}>3 Main Meals / Day (Breakfast, Lunch & Dinner)</option>
+              <option value="4" ${onboardingDraft.mealsPerDay === 4 ? 'selected' : ''}>4 Main Meals / Day (Frequent Athlete Split)</option>
+            </select>
           </div>
+
           <div>
-            <label class="block font-bold mb-1">Goal Strategy & Pace</label>
-            <select id="obGoalType" onchange="onboardingDraft.goalType=this.value; renderOnboardingStep();" class="w-full soft-input rounded-xl px-3 py-2.5 font-semibold">
-              <option value="cut_moderate" ${onboardingDraft.goalType === 'cut_moderate' ? 'selected' : ''}>Steady Fat Loss (~1 lb/wk)</option>
-              <option value="cut_aggressive" ${onboardingDraft.goalType === 'cut_aggressive' ? 'selected' : ''}>Aggressive Cut (~1.4 lbs/wk)</option>
-              <option value="recomp" ${onboardingDraft.goalType === 'recomp' ? 'selected' : ''}>Body Recomposition (-300 kcal)</option>
-              <option value="maintain" ${onboardingDraft.goalType === 'maintain' ? 'selected' : ''}>Maintain Weight & Energy</option>
-              <option value="lean_bulk" ${onboardingDraft.goalType === 'lean_bulk' ? 'selected' : ''}>Lean Muscle Gain (+250 kcal)</option>
+            <label class="block font-bold text-sky-600 dark:text-sky-400 mb-1">2. Snacks Per Day *</label>
+            <select id="obSnacksPerDay" onchange="onboardingDraft.snacksPerDay=parseInt(this.value,10); renderOnboardingStep();" class="w-full soft-input rounded-xl px-3 py-2.5 font-bold">
+              <option value="0" ${onboardingDraft.snacksPerDay === 0 ? 'selected' : ''}>0 Snacks (Main Meals Only)</option>
+              <option value="1" ${onboardingDraft.snacksPerDay === 1 ? 'selected' : ''}>1 Daily Snack</option>
+              <option value="2" ${onboardingDraft.snacksPerDay === 2 ? 'selected' : ''}>2 Daily Snacks (Recommended)</option>
+              <option value="3" ${onboardingDraft.snacksPerDay === 3 ? 'selected' : ''}>3 Daily Snacks</option>
             </select>
           </div>
         </div>
 
-        <!-- Revealed Scientific Blueprint -->
-        <div class="p-4 rounded-2xl bg-slate-50 dark:bg-slate-900 border border-emerald-500/30 space-y-3 text-xs">
-          <div class="flex items-center justify-between">
-            <span class="font-bold text-emerald-600 dark:text-emerald-400">🔬 Your Clinical Metabolic Numbers</span>
-            <span class="text-[11px] font-semibold text-slate-400">Maintenance TDEE: ${sci.tdee.toLocaleString()} kcal</span>
+        <!-- Live Daily Slot Split Preview -->
+        <div class="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-900 border border-emerald-500/30 space-y-2 text-xs">
+          <div class="font-bold text-emerald-600 dark:text-emerald-400">📊 Your Automatic Daily Macro Split (${previewSlots.length} Daily Slots):</div>
+          <div class="flex flex-wrap gap-1.5">
+            ${previewSlots.map(sl => `
+              <span class="px-2.5 py-1 rounded-xl text-[11px] font-bold ${sl.isSnack ? 'bg-amber-500/15 text-amber-600 dark:text-amber-300' : 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'}">
+                ${sl.slot}: ~${Math.round(sl.ratio * 100)}% of daily calories
+              </span>
+            `).join('')}
           </div>
-
-          <div class="grid grid-cols-5 gap-2 text-center">
-            <div class="p-2 rounded-xl soft-card">
-              <div class="text-[10px] text-slate-400">Calories</div>
-              <div class="text-sm font-extrabold">${sci.calories}</div>
-            </div>
-            <div class="p-2 rounded-xl soft-card">
-              <div class="text-[10px] text-slate-400">Protein</div>
-              <div class="text-sm font-extrabold text-emerald-600 dark:text-emerald-400">${sci.protein}g</div>
-            </div>
-            <div class="p-2 rounded-xl soft-card">
-              <div class="text-[10px] text-slate-400">Carbs</div>
-              <div class="text-sm font-extrabold text-sky-500">${sci.carbs}g</div>
-            </div>
-            <div class="p-2 rounded-xl soft-card">
-              <div class="text-[10px] text-slate-400">Fat</div>
-              <div class="text-sm font-extrabold text-amber-500">${sci.fat}g</div>
-            </div>
-            <div class="p-2 rounded-xl soft-card">
-              <div class="text-[10px] text-slate-400">Fiber</div>
-              <div class="text-sm font-extrabold text-purple-500">${sci.fiber}g</div>
-            </div>
-          </div>
-
-          <p class="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
-            Every day of your 7-day meal plan will now be automatically portioned to hit <strong>${sci.calories.toLocaleString()} kcal</strong> and <strong>${sci.protein}g of protein</strong> to protect your lean mass (${sci.leanMassLbs} lbs)!
-          </p>
         </div>
 
-        <button onclick="completeFamilyOnboarding()" class="w-full py-4 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-xs shadow-lg transition">
-          🚀 Launch My Custom 7-Day Meal Plan!
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+          <div>
+            <label class="block font-bold mb-1">3. Preferred Cooking Style</label>
+            <select id="obPrepStyle" onchange="onboardingDraft.prepStyle=this.value;" class="w-full soft-input rounded-xl px-3 py-2.5 font-semibold">
+              <option value="mix" ${onboardingDraft.prepStyle === 'mix' ? 'selected' : ''}>Mix of Batch Prep + Fresh Quick Meals</option>
+              <option value="fresh" ${onboardingDraft.prepStyle === 'fresh' ? 'selected' : ''}>Fresh Daily (Quick 15-min meals)</option>
+              <option value="batch" ${onboardingDraft.prepStyle === 'batch' ? 'selected' : ''}>Batch Meal Prep (Cook once for 2 days)</option>
+            </select>
+          </div>
+          <div>
+            <label class="block font-bold mb-1">4. Spice & Seasoning Vibe</label>
+            <select id="obSpiceLevel" onchange="onboardingDraft.spiceLevel=this.value;" class="w-full soft-input rounded-xl px-3 py-2.5 font-semibold">
+              <option value="mild" ${onboardingDraft.spiceLevel === 'mild' ? 'selected' : ''}>🌿 Mild, Clean & Herby</option>
+              <option value="medium" ${onboardingDraft.spiceLevel === 'medium' ? 'selected' : ''}>✨ Medium & Flavorful</option>
+              <option value="spicy" ${onboardingDraft.spiceLevel === 'spicy' ? 'selected' : ''}>🌶️ Bold, Zesty & Spicy</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="space-y-1.5 text-xs">
+          <label class="block font-bold text-slate-600 dark:text-slate-300">5. Kitchen Appliances You Use (Tap to toggle):</label>
+          <div class="flex flex-wrap gap-1.5">
+            ${allAppliances.map(app => {
+              const active = (onboardingDraft.equipment || []).includes(app);
+              return `
+                <button type="button" onclick="toggleOnboardingEquipment('${app}')" class="px-3 py-1.5 rounded-xl text-[11px] font-bold border transition ${
+                  active
+                    ? 'bg-emerald-600 text-white border-emerald-500 shadow-sm'
+                    : 'bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-500'
+                }">${active ? '✓ ' : ''}${app}</button>
+              `;
+            }).join('')}
+          </div>
+        </div>
+
+        <button onclick="submitOnboardingStep2Preferences()" class="w-full py-3.5 rounded-2xl bg-slate-900 dark:bg-emerald-500 text-white dark:text-slate-950 font-extrabold text-xs shadow-md">
+          Next: Choose Favorite World Cuisines (Step 3 of 5) ▶
         </button>
       </div>
     `;
+    return;
+  }
+
+  // STEP 3 OF 5: WORLD CUISINES (SELECT UP TO 5)
+  if (s === 3) {
+    const catalog = window.CUISINE_CATALOG || [];
+    const selected = onboardingDraft.selectedCuisines || [];
+    const regions = ['Mediterranean & Middle Eastern', 'South & East Asian', 'European & Americas'];
+
+    container.innerHTML = `
+      <div class="soft-card rounded-3xl p-5 sm:p-6 space-y-4">
+        ${renderOnboardingProgressHeader(3, 'World Cuisines (Pick Up to 5)', 2)}
+
+        <div class="flex items-start justify-between gap-2">
+          <div>
+            <h2 class="text-lg font-extrabold">Which Cuisines Do You Love Eating?</h2>
+            <p class="text-xs text-slate-400 mt-0.5">
+              Select <strong>1 to 5 cuisines</strong> (5 is the sweet spot for maximum weekly variety without bloating your grocery list!).
+            </p>
+          </div>
+          <span class="px-3 py-1 rounded-full text-xs font-extrabold shrink-0 ${selected.length === 5 ? 'bg-amber-500 text-slate-950' : 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400'}">
+            ${selected.length} / 5 Picked
+          </span>
+        </div>
+
+        <div class="space-y-3.5 max-h-[52vh] overflow-y-auto pr-1">
+          ${regions.map(region => {
+            const items = catalog.filter(c => c.region === region);
+            return `
+              <div class="space-y-1.5">
+                <div class="text-[11px] font-extrabold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">${region}</div>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  ${items.map(c => {
+                    const isSel = selected.includes(c.id);
+                    return `
+                      <button type="button" onclick="toggleOnboardingCuisine('${c.id}')" class="p-2.5 rounded-2xl text-left border transition flex items-start gap-2.5 ${
+                        isSel
+                          ? 'bg-emerald-500/15 border-emerald-500 text-slate-900 dark:text-white shadow-sm'
+                          : 'bg-slate-50 dark:bg-slate-900/70 border-slate-200/80 dark:border-slate-800 text-slate-600 dark:text-slate-300 hover:border-emerald-500/40'
+                      }">
+                        <span class="text-lg shrink-0">${c.icon}</span>
+                        <div class="min-w-0 flex-1">
+                          <div class="text-xs font-extrabold flex items-center justify-between">
+                            <span class="truncate">${c.name}</span>
+                            ${isSel ? '<span class="text-emerald-500 font-extrabold ml-1">✓</span>' : ''}
+                          </div>
+                          <div class="text-[10px] text-slate-400 line-clamp-1 mt-0.5">${c.desc}</div>
+                        </div>
+                      </button>
+                    `;
+                  }).join('')}
+                </div>
+              </div>
+            `;
+          }).join('')}
+        </div>
+
+        <div id="obStep3Err" class="hidden text-xs text-rose-500 font-semibold bg-rose-500/10 p-2.5 rounded-xl"></div>
+
+        <button onclick="submitOnboardingStep3Cuisines()" class="w-full py-3.5 rounded-2xl bg-slate-900 dark:bg-emerald-500 text-white dark:text-slate-950 font-extrabold text-xs shadow-md">
+          Next: Dietary Restrictions & Allergies (Step 4 of 5) ▶
+        </button>
+      </div>
+    `;
+    return;
+  }
+
+  // STEP 4 OF 5: DIETARY RESTRICTIONS, RELIGIOUS RULES & ALLERGIES
+  if (s === 4) {
+    const selRules = onboardingDraft.dietaryRules || [];
+    const selAllergies = onboardingDraft.allergies || [];
+
+    container.innerHTML = `
+      <div class="soft-card rounded-3xl p-5 sm:p-6 space-y-4">
+        ${renderOnboardingProgressHeader(4, 'Dietary Rules & Allergies', 3)}
+
+        <div>
+          <h2 class="text-lg font-extrabold">Any Dietary Rules or Food Restrictions?</h2>
+          <p class="text-xs text-slate-400 mt-0.5">
+            Every weekly meal plan and on-demand craving will strictly respect these filters. Select all that apply (or leave blank if none):
+          </p>
+        </div>
+
+        <div class="space-y-2 text-xs">
+          <div class="font-bold text-emerald-600 dark:text-emerald-400">1. Dietary & Religious Lifestyle (Select any):</div>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            ${(window.DIETARY_CATALOG || []).map(d => {
+              const active = selRules.includes(d.id);
+              return `
+                <button type="button" onclick="toggleOnboardingDietRule('${d.id}')" class="p-2.5 rounded-2xl text-left border transition flex items-start gap-2 ${
+                  active
+                    ? 'bg-emerald-500/15 border-emerald-500 text-slate-900 dark:text-white'
+                    : 'bg-slate-50 dark:bg-slate-900/70 border-slate-200/80 dark:border-slate-800 text-slate-600 dark:text-slate-300'
+                }">
+                  <span class="text-base shrink-0">${d.icon}</span>
+                  <div class="flex-1">
+                    <div class="font-bold flex items-center justify-between">
+                      <span>${d.label}</span>
+                      ${active ? '<span class="text-emerald-500">✓</span>' : ''}
+                    </div>
+                    <div class="text-[10px] text-slate-400 mt-0.5">${d.desc}</div>
+                  </div>
+                </button>
+              `;
+            }).join('')}
+          </div>
+        </div>
+
+        <div class="space-y-2 text-xs pt-1">
+          <div class="font-bold text-amber-600 dark:text-amber-400">2. Allergies & Intolerances to Strictly Exclude:</div>
+          <div class="flex flex-wrap gap-1.5">
+            ${(window.ALLERGY_CATALOG || []).map(a => {
+              const active = selAllergies.includes(a.id);
+              return `
+                <button type="button" onclick="toggleOnboardingAllergy('${a.id}')" class="px-3 py-2 rounded-xl text-xs font-bold border transition ${
+                  active
+                    ? 'bg-amber-500 text-slate-950 border-amber-400 shadow-sm'
+                    : 'bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300'
+                }">${a.icon} ${a.label} ${active ? '✓' : ''}</button>
+              `;
+            }).join('')}
+          </div>
+        </div>
+
+        <div class="text-xs pt-1">
+          <label class="block font-bold text-slate-600 dark:text-slate-300 mb-1">3. Any Specific Ingredients You Dislike? (Optional)</label>
+          <input id="obCustomExclusions" type="text" value="${onboardingDraft.customExclusionsText || ''}" oninput="onboardingDraft.customExclusionsText=this.value;" placeholder="e.g., Mushrooms, Olives, Cilantro, Salmon (comma separated)..." class="w-full soft-input rounded-xl px-3.5 py-2.5 text-xs" />
+        </div>
+
+        <button onclick="onboardingDraft.step=5; renderOnboardingStep();" class="w-full py-3.5 rounded-2xl bg-slate-900 dark:bg-emerald-500 text-white dark:text-slate-950 font-extrabold text-xs shadow-md">
+          Next: Body Metrics & Calorie Calculation (Step 5 of 5) ▶
+        </button>
+      </div>
+    `;
+    return;
+  }
+
+  // STEP 5 OF 5: BODY METRICS & GOALS (MANDATORY VS OPTIONAL CLEARLY SEPARATED + LIVE BLUEPRINT)
+  if (s === 5) {
+    const sci = computeScientificMacros(onboardingDraft);
+    container.innerHTML = `
+      <div class="soft-card rounded-3xl p-5 sm:p-6 space-y-4">
+        ${renderOnboardingProgressHeader(5, 'Body Stats & Custom Blueprint', 4)}
+
+        <div>
+          <h2 class="text-lg font-extrabold">Final Step: Your Body Metrics & Goal, ${onboardingDraft.displayName}</h2>
+          <div class="mt-1.5 p-3 rounded-2xl bg-emerald-50/80 dark:bg-emerald-500/10 border border-emerald-500/30 text-[11px] text-slate-600 dark:text-slate-300 leading-relaxed">
+            💡 <strong>Mandatory vs. Optional:</strong> Only the <strong>Mandatory (*)</strong> fields below are needed right now. <strong>Body Fat %, Muscle Mass, and Waist Size are 100% Optional</strong> (auto-estimated if left blank). <strong>You can always come back to the Profile tab anytime to add or update these details—and doing so will automatically recalculate your daily caloric intake, macros, and meals!</strong>
+          </div>
+        </div>
+
+        <!-- Mandatory Section -->
+        <div class="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-900/70 border border-slate-200/80 dark:border-slate-800 space-y-3 text-xs">
+          <div class="flex items-center justify-between">
+            <span class="text-[11px] font-extrabold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">✓ Mandatory Fields (* Required)</span>
+            <span class="text-[10px] text-slate-400">Calculates your BMR & TDEE</span>
+          </div>
+
+          <div class="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+            <div>
+              <label class="block font-bold mb-1">Biological Sex *</label>
+              <select id="obSex" onchange="syncStep5Inputs(); renderOnboardingStep();" class="w-full soft-input rounded-xl px-2.5 py-2 font-semibold">
+                <option value="male" ${onboardingDraft.sex === 'male' ? 'selected' : ''}>Male</option>
+                <option value="female" ${onboardingDraft.sex === 'female' ? 'selected' : ''}>Female</option>
+              </select>
+            </div>
+            <div>
+              <label class="block font-bold mb-1">Age (Years) *</label>
+              <input id="obAge" type="number" value="${onboardingDraft.age}" onchange="syncStep5Inputs(); renderOnboardingStep();" class="w-full soft-input rounded-xl px-2.5 py-2 font-bold" />
+            </div>
+            <div class="col-span-2 sm:col-span-1">
+              <label class="block font-bold mb-1">Height (Ft / In) *</label>
+              <div class="flex gap-1.5">
+                <input id="obHeightFt" type="number" value="${onboardingDraft.heightFt}" onchange="syncStep5Inputs(); renderOnboardingStep();" placeholder="5 ft" class="w-1/2 soft-input rounded-xl px-2 py-2 font-bold" />
+                <input id="obHeightIn" type="number" value="${onboardingDraft.heightIn}" onchange="syncStep5Inputs(); renderOnboardingStep();" placeholder="8 in" class="w-1/2 soft-input rounded-xl px-2 py-2 font-bold" />
+              </div>
+            </div>
+            <div>
+              <label class="block font-bold text-emerald-600 dark:text-emerald-400 mb-1">Current Weight (lbs) *</label>
+              <input id="obWeight" type="number" step="0.1" value="${onboardingDraft.currentWeight}" onchange="syncStep5Inputs(); renderOnboardingStep();" class="w-full soft-input rounded-xl px-2.5 py-2 font-extrabold" />
+            </div>
+            <div>
+              <label class="block font-bold text-emerald-600 dark:text-emerald-400 mb-1">Goal Weight (lbs) *</label>
+              <input id="obGoalWeight" type="number" step="0.1" value="${onboardingDraft.goalWeight}" onchange="syncStep5Inputs(); renderOnboardingStep();" class="w-full soft-input rounded-xl px-2.5 py-2 font-extrabold" />
+            </div>
+            <div>
+              <label class="block font-bold mb-1">Goal Pace *</label>
+              <select id="obGoalType" onchange="syncStep5Inputs(); renderOnboardingStep();" class="w-full soft-input rounded-xl px-2 py-2 font-semibold">
+                <option value="cut_moderate" ${onboardingDraft.goalType === 'cut_moderate' ? 'selected' : ''}>Steady Fat Loss (~1 lb/wk)</option>
+                <option value="cut_aggressive" ${onboardingDraft.goalType === 'cut_aggressive' ? 'selected' : ''}>Aggressive Cut (~1.4 lb/wk)</option>
+                <option value="recomp" ${onboardingDraft.goalType === 'recomp' ? 'selected' : ''}>Body Recomp (-300 kcal)</option>
+                <option value="maintain" ${onboardingDraft.goalType === 'maintain' ? 'selected' : ''}>Maintain Weight</option>
+                <option value="lean_bulk" ${onboardingDraft.goalType === 'lean_bulk' ? 'selected' : ''}>Lean Muscle (+250 kcal)</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-2 gap-2.5 pt-1">
+            <div>
+              <label class="block font-bold mb-1">Daily Activity *</label>
+              <select id="obActivity" onchange="syncStep5Inputs(); renderOnboardingStep();" class="w-full soft-input rounded-xl px-2.5 py-2">
+                <option value="1.2" ${onboardingDraft.activityMultiplier === 1.2 ? 'selected' : ''}>Sedentary (Desk job)</option>
+                <option value="1.375" ${onboardingDraft.activityMultiplier === 1.375 ? 'selected' : ''}>Lightly Active</option>
+                <option value="1.55" ${onboardingDraft.activityMultiplier === 1.55 ? 'selected' : ''}>Moderately Active</option>
+                <option value="1.725" ${onboardingDraft.activityMultiplier === 1.725 ? 'selected' : ''}>Very Active</option>
+              </select>
+            </div>
+            <div>
+              <label class="block font-bold mb-1">Workouts / Week *</label>
+              <select id="obWorkouts" onchange="syncStep5Inputs(); renderOnboardingStep();" class="w-full soft-input rounded-xl px-2.5 py-2">
+                <option value="0" ${onboardingDraft.workoutsPerWeek === 0 ? 'selected' : ''}>0–1 days / week</option>
+                <option value="3" ${onboardingDraft.workoutsPerWeek === 3 ? 'selected' : ''}>2–3 days / week</option>
+                <option value="4" ${onboardingDraft.workoutsPerWeek === 4 ? 'selected' : ''}>4–5 days / week</option>
+                <option value="6" ${onboardingDraft.workoutsPerWeek === 6 ? 'selected' : ''}>6+ days / week</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <!-- Optional Section -->
+        <div class="p-3.5 rounded-2xl bg-amber-500/5 border border-amber-500/30 space-y-2.5 text-xs">
+          <div class="flex items-center justify-between">
+            <span class="text-[11px] font-extrabold uppercase tracking-wider text-amber-600 dark:text-amber-400">✨ Optional Details (Add Now or Anytime Later in Profile)</span>
+            <span class="text-[10px] text-slate-400">Auto-estimated if left blank</span>
+          </div>
+          <div class="grid grid-cols-3 gap-2.5">
+            <div>
+              <label class="block font-semibold text-slate-500 dark:text-slate-300 mb-1">Body Fat % (Opt)</label>
+              <input id="obBf" type="number" step="0.1" value="${onboardingDraft.bodyFatPct}" onchange="syncStep5Inputs(); renderOnboardingStep();" placeholder="Est: ${sci.estimatedBfPct}%" class="w-full soft-input rounded-xl px-2.5 py-2 font-bold" />
+            </div>
+            <div>
+              <label class="block font-semibold text-slate-500 dark:text-slate-300 mb-1">Muscle lbs (Opt)</label>
+              <input id="obMuscle" type="number" step="0.1" value="${onboardingDraft.muscleMassLbs}" onchange="syncStep5Inputs(); renderOnboardingStep();" placeholder="Est: ${sci.muscleLbs}" class="w-full soft-input rounded-xl px-2.5 py-2 font-bold" />
+            </div>
+            <div>
+              <label class="block font-semibold text-slate-500 dark:text-slate-300 mb-1">Waist in (Opt)</label>
+              <input id="obWaist" type="number" step="0.1" value="${onboardingDraft.waistIn || ''}" onchange="syncStep5Inputs();" placeholder="Optional" class="w-full soft-input rounded-xl px-2.5 py-2 font-bold" />
+            </div>
+          </div>
+        </div>
+
+        <!-- Live Calculated Nutrition Blueprint -->
+        <div class="p-4 rounded-2xl bg-slate-900 text-white border border-emerald-500/40 space-y-2.5 text-xs">
+          <div class="flex items-center justify-between">
+            <span class="font-extrabold text-emerald-400">🔬 Your Custom Daily Macro Blueprint</span>
+            <span class="text-[11px] text-slate-400">${onboardingDraft.mealsPerDay} Meals + ${onboardingDraft.snacksPerDay} Snacks</span>
+          </div>
+          <div class="grid grid-cols-5 gap-1.5 text-center">
+            <div class="p-2 rounded-xl bg-slate-800/90"><div class="text-[10px] text-slate-400">Calories</div><div class="text-sm font-extrabold">${sci.calories}</div></div>
+            <div class="p-2 rounded-xl bg-slate-800/90"><div class="text-[10px] text-slate-400">Protein</div><div class="text-sm font-extrabold text-emerald-400">${sci.protein}g</div></div>
+            <div class="p-2 rounded-xl bg-slate-800/90"><div class="text-[10px] text-slate-400">Carbs</div><div class="text-sm font-extrabold text-sky-400">${sci.carbs}g</div></div>
+            <div class="p-2 rounded-xl bg-slate-800/90"><div class="text-[10px] text-slate-400">Fat</div><div class="text-sm font-extrabold text-amber-400">${sci.fat}g</div></div>
+            <div class="p-2 rounded-xl bg-slate-800/90"><div class="text-[10px] text-slate-400">Fiber</div><div class="text-sm font-extrabold text-purple-400">${sci.fiber}g</div></div>
+          </div>
+        </div>
+
+        <div id="obStep5Err" class="hidden text-xs text-rose-500 font-semibold bg-rose-500/10 p-2.5 rounded-xl"></div>
+
+        <button onclick="completeFamilyOnboarding()" class="w-full py-4 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-xs shadow-lg shadow-emerald-600/25 transition">
+          🚀 Complete Onboarding & Unlock My Weekly Plan + Craving Generator!
+        </button>
+      </div>
+    `;
+    return;
   }
 }
 
-async function submitOnboardingStep2() {
+async function submitOnboardingStep1() {
   const rawName = (document.getElementById('obName')?.value || '').trim();
   const pin = (document.getElementById('obPin')?.value || '').trim();
-  const errEl = document.getElementById('obStep2Err');
-  const btn = document.getElementById('btnObStep2');
+  const errEl = document.getElementById('obStep1Err');
+  const btn = document.getElementById('btnObStep1');
 
   if (!rawName || rawName.length < 2) {
     errEl.textContent = 'Please enter a username / first name (at least 2 characters).';
@@ -3183,7 +3965,7 @@ async function submitOnboardingStep2() {
     return;
   }
   if (cleanUser === 'mo') {
-    errEl.textContent = 'The username "Mo" is already taken. Please create your own username (or click Sign In if you are Mo).';
+    errEl.textContent = 'The username "Mo" is already taken. Please create your own username (or click Sign In at the top right if you are Mo).';
     errEl.classList.remove('hidden');
     return;
   }
@@ -3193,17 +3975,20 @@ async function submitOnboardingStep2() {
     btn.textContent = '⏳ Checking username availability...';
   }
   try {
-    const resp = await fetch(getFirebaseUserUrl(cleanUser));
-    if (resp.ok) {
-      const existing = await resp.json();
-      if (existing && existing.profile) {
-        errEl.textContent = `Username "${rawName}" already exists! Choose another username (e.g., ${rawName}2) or click Sign In at the top right.`;
-        errEl.classList.remove('hidden');
-        if (btn) {
-          btn.disabled = false;
-          btn.textContent = '🚀 Create Username & Set Body Goals ▶';
+    const url = getFirebaseUserUrl(cleanUser);
+    if (url) {
+      const resp = await fetch(url);
+      if (resp.ok) {
+        const existing = await resp.json();
+        if (existing && existing.profile && existing.profile.onboardingCompleted !== false) {
+          errEl.textContent = `Username "${rawName}" already exists! Choose another username (e.g., ${rawName}2) or click Sign In at the top right.`;
+          errEl.classList.remove('hidden');
+          if (btn) {
+            btn.disabled = false;
+            btn.textContent = 'Next: Structure My Daily Meals & Snacks (Step 2 of 5) ▶';
+          }
+          return;
         }
-        return;
       }
     }
   } catch (e) {}
@@ -3212,32 +3997,157 @@ async function submitOnboardingStep2() {
   onboardingDraft.displayName = rawName;
   onboardingDraft.username = cleanUser;
   onboardingDraft.pin = pin;
-  onboardingDraft.step = 3;
+  onboardingDraft.step = 2;
+
+  // Save partial session with onboardingCompleted: false so if they refresh before Step 5, the app gates generation until they finish!
+  currentSession = { username: cleanUser, displayName: rawName, pin };
+  localStorage.setItem(ACTIVE_USER_SESSION_KEY, JSON.stringify(currentSession));
+  state.displayName = rawName;
+  state.authPin = pin;
+  state.profile.onboardingCompleted = false;
+  state.profile.onboardingStep = 2;
+  saveState(true);
+
   renderOnboardingStep();
 }
 
-function submitOnboardingStep3() {
-  onboardingDraft.sex = document.getElementById('obSex').value;
-  onboardingDraft.age = parseInt(document.getElementById('obAge').value, 10) || 34;
-  onboardingDraft.heightFt = parseInt(document.getElementById('obHeightFt').value, 10) || 5;
-  onboardingDraft.heightIn = parseInt(document.getElementById('obHeightIn').value, 10) || 8;
-  onboardingDraft.currentWeight = parseFloat(document.getElementById('obWeight').value) || 175;
-  onboardingDraft.bodyFatPct = parseFloat(document.getElementById('obBf').value) || (onboardingDraft.sex === 'female' ? 28 : 22);
-  const estLbm = onboardingDraft.currentWeight * (1 - onboardingDraft.bodyFatPct / 100);
-  onboardingDraft.muscleMassLbs = parseFloat(document.getElementById('obMuscle').value) || Math.round(estLbm * 0.57);
-  onboardingDraft.activityMultiplier = parseFloat(document.getElementById('obActivity').value) || 1.375;
-  onboardingDraft.workoutsPerWeek = parseInt(document.getElementById('obWorkouts').value, 10) || 3;
-  onboardingDraft.goalWeight = Math.max(105, Math.round(onboardingDraft.currentWeight - 12));
-  onboardingDraft.step = 4;
+function toggleOnboardingEquipment(app) {
+  const list = onboardingDraft.equipment || [];
+  const idx = list.indexOf(app);
+  if (idx >= 0) {
+    if (list.length > 1) list.splice(idx, 1);
+  } else {
+    list.push(app);
+  }
+  onboardingDraft.equipment = list;
   renderOnboardingStep();
+}
+
+function submitOnboardingStep2Preferences() {
+  onboardingDraft.mealsPerDay = parseInt(document.getElementById('obMealsPerDay')?.value, 10) || 2;
+  onboardingDraft.snacksPerDay = parseInt(document.getElementById('obSnacksPerDay')?.value, 10) ?? 2;
+  onboardingDraft.prepStyle = document.getElementById('obPrepStyle')?.value || 'mix';
+  onboardingDraft.spiceLevel = document.getElementById('obSpiceLevel')?.value || 'medium';
+  onboardingDraft.step = 3;
+  state.profile.onboardingStep = 3;
+  saveState(true);
+  renderOnboardingStep();
+}
+
+function toggleOnboardingCuisine(cid) {
+  const list = onboardingDraft.selectedCuisines || [];
+  const idx = list.indexOf(cid);
+  const errEl = document.getElementById('obStep3Err');
+  if (errEl) errEl.classList.add('hidden');
+
+  if (idx >= 0) {
+    list.splice(idx, 1);
+  } else {
+    if (list.length >= 5) {
+      if (errEl) {
+        errEl.textContent = 'You can select up to 5 favorite cuisines! Tap a selected cuisine to swap it out.';
+        errEl.classList.remove('hidden');
+      }
+      return;
+    }
+    list.push(cid);
+  }
+  onboardingDraft.selectedCuisines = list;
+  renderOnboardingStep();
+}
+
+function submitOnboardingStep3Cuisines() {
+  const list = onboardingDraft.selectedCuisines || [];
+  const errEl = document.getElementById('obStep3Err');
+  if (list.length === 0) {
+    if (errEl) {
+      errEl.textContent = 'Please select at least 1 favorite cuisine (up to 5) so we know what style of meals to cook for you!';
+      errEl.classList.remove('hidden');
+    }
+    return;
+  }
+  onboardingDraft.step = 4;
+  state.profile.onboardingStep = 4;
+  saveState(true);
+  renderOnboardingStep();
+}
+
+function toggleOnboardingDietRule(rid) {
+  const list = onboardingDraft.dietaryRules || [];
+  const idx = list.indexOf(rid);
+  if (idx >= 0) list.splice(idx, 1);
+  else list.push(rid);
+  onboardingDraft.dietaryRules = list;
+  renderOnboardingStep();
+}
+
+function toggleOnboardingAllergy(aid) {
+  const list = onboardingDraft.allergies || [];
+  const idx = list.indexOf(aid);
+  if (idx >= 0) list.splice(idx, 1);
+  else list.push(aid);
+  onboardingDraft.allergies = list;
+  renderOnboardingStep();
+}
+
+function syncStep5Inputs() {
+  const sexEl = document.getElementById('obSex');
+  const ageEl = document.getElementById('obAge');
+  const ftEl = document.getElementById('obHeightFt');
+  const inEl = document.getElementById('obHeightIn');
+  const wEl = document.getElementById('obWeight');
+  const gwEl = document.getElementById('obGoalWeight');
+  const gtEl = document.getElementById('obGoalType');
+  const actEl = document.getElementById('obActivity');
+  const wkEl = document.getElementById('obWorkouts');
+  const bfEl = document.getElementById('obBf');
+  const musEl = document.getElementById('obMuscle');
+  const wstEl = document.getElementById('obWaist');
+
+  if (sexEl) onboardingDraft.sex = sexEl.value;
+  if (ageEl) onboardingDraft.age = parseInt(ageEl.value, 10) || 34;
+  if (ftEl) onboardingDraft.heightFt = parseInt(ftEl.value, 10) || 5;
+  if (inEl) onboardingDraft.heightIn = parseInt(inEl.value, 10) ?? 8;
+  if (wEl) onboardingDraft.currentWeight = parseFloat(wEl.value) || 175;
+  if (gwEl) onboardingDraft.goalWeight = parseFloat(gwEl.value) || 160;
+  if (gtEl) onboardingDraft.goalType = gtEl.value;
+  if (actEl) onboardingDraft.activityMultiplier = parseFloat(actEl.value) || 1.375;
+  if (wkEl) onboardingDraft.workoutsPerWeek = parseInt(wkEl.value, 10) ?? 3;
+  if (bfEl) onboardingDraft.bodyFatPct = bfEl.value.trim();
+  if (musEl) onboardingDraft.muscleMassLbs = musEl.value.trim();
+  if (wstEl) onboardingDraft.waistIn = wstEl.value.trim();
 }
 
 async function completeFamilyOnboarding() {
+  syncStep5Inputs();
+  const errEl = document.getElementById('obStep5Err');
+  if (!onboardingDraft.currentWeight || onboardingDraft.currentWeight < 65 || !onboardingDraft.age || !onboardingDraft.heightFt) {
+    if (errEl) {
+      errEl.textContent = 'Please fill in all Mandatory (*) fields (Age, Height, Current Weight, and Goal Weight).';
+      errEl.classList.remove('hidden');
+    }
+    return;
+  }
+
   const sci = computeScientificMacros(onboardingDraft);
-  const goalW = parseFloat(document.getElementById('obGoalWeight')?.value) || onboardingDraft.goalWeight;
-  const goalType = document.getElementById('obGoalType')?.value || onboardingDraft.goalType;
-  const leanLbs = onboardingDraft.currentWeight * (1 - onboardingDraft.bodyFatPct / 100);
+  const goalW = parseFloat(onboardingDraft.goalWeight) || Math.max(105, Math.round(onboardingDraft.currentWeight - 10));
+  const finalBf = parseFloat(onboardingDraft.bodyFatPct) || sci.estimatedBfPct;
+  const finalMuscle = parseFloat(onboardingDraft.muscleMassLbs) || sci.muscleLbs;
+  const leanLbs = onboardingDraft.currentWeight * (1 - finalBf / 100);
   const goalBf = Math.max(10, +(((goalW - leanLbs) / goalW) * 100).toFixed(1));
+
+  // Build exclusion list from dietary rules + allergies + custom text
+  const autoExclusions = new Set();
+  if ((onboardingDraft.dietaryRules || []).includes('pork_free') || (onboardingDraft.dietaryRules || []).includes('halal') || (onboardingDraft.dietaryRules || []).includes('kosher')) {
+    ['Pork', 'Bacon', 'Ham', 'Gelatin'].forEach(x => autoExclusions.add(x));
+  }
+  (onboardingDraft.allergies || []).forEach(aid => {
+    const found = (window.ALLERGY_CATALOG || []).find(a => a.id === aid);
+    if (found && found.excludes) found.excludes.forEach(x => autoExclusions.add(x));
+  });
+  if (onboardingDraft.customExclusionsText) {
+    onboardingDraft.customExclusionsText.split(',').map(s => s.trim()).filter(Boolean).forEach(x => autoExclusions.add(x));
+  }
 
   currentSession = {
     username: onboardingDraft.username,
@@ -3250,8 +4160,20 @@ async function completeFamilyOnboarding() {
     theme: state.theme || 'light',
     authPin: onboardingDraft.pin,
     displayName: onboardingDraft.displayName,
+    weekGenerationSeed: 1,
     profile: {
       ...JSON.parse(JSON.stringify(window.DEFAULT_PROFILE)),
+      onboardingCompleted: true,
+      onboardingStep: 5,
+      mealsPerDay: onboardingDraft.mealsPerDay || 2,
+      snacksPerDay: onboardingDraft.snacksPerDay ?? 2,
+      prepStyle: onboardingDraft.prepStyle || 'mix',
+      spiceLevel: onboardingDraft.spiceLevel || 'medium',
+      equipment: onboardingDraft.equipment || ['Air Fryer', 'Stovetop', 'Oven'],
+      selectedCuisines: onboardingDraft.selectedCuisines || ['mediterranean', 'lebanese', 'egyptian', 'indian', 'mexican'],
+      dietaryRules: onboardingDraft.dietaryRules || [],
+      allergies: onboardingDraft.allergies || [],
+      exclusions: Array.from(autoExclusions),
       calories: sci.calories,
       protein: sci.protein,
       carbs: sci.carbs,
@@ -3265,12 +4187,12 @@ async function completeFamilyOnboarding() {
       heightFt: onboardingDraft.heightFt,
       heightIn: onboardingDraft.heightIn,
       age: onboardingDraft.age,
-      bodyFatPct: onboardingDraft.bodyFatPct,
-      muscleMassLbs: onboardingDraft.muscleMassLbs,
-      waistIn: '',
+      bodyFatPct: finalBf,
+      muscleMassLbs: finalMuscle,
+      waistIn: onboardingDraft.waistIn || '',
       activityMultiplier: onboardingDraft.activityMultiplier,
       workoutsPerWeek: onboardingDraft.workoutsPerWeek,
-      goalType
+      goalType: onboardingDraft.goalType
     },
     activeWeekMondayISO: currentMondayISO,
     selectedDayIndex: 0,
@@ -3280,9 +4202,9 @@ async function completeFamilyOnboarding() {
         id: 'onboard-' + Date.now(),
         dateISO: formatDateISO(new Date()),
         weight: onboardingDraft.currentWeight,
-        bodyFatPct: onboardingDraft.bodyFatPct,
-        muscleMassLbs: onboardingDraft.muscleMassLbs,
-        note: `Onboarding Baseline (${onboardingDraft.currentWeight} lbs → Goal: ${goalW} lbs)`
+        bodyFatPct: finalBf,
+        muscleMassLbs: finalMuscle,
+        note: `Onboarding Baseline (${onboardingDraft.currentWeight} lbs → Goal: ${goalW} lbs • ${sci.calories} kcal)`
       }
     ],
     favorites: [],
@@ -3293,10 +4215,53 @@ async function completeFamilyOnboarding() {
     lastUpdated: Date.now()
   };
 
-  ensureWeekExists(state.activeWeekMondayISO, true, 'mix');
+  ensureWeekExists(state.activeWeekMondayISO, true, state.profile.prepStyle);
   saveState(false);
   await initializeAuthenticatedApp();
-  showToast(`🎉 Welcome, ${onboardingDraft.displayName}! Your ${sci.calories} kcal plan is ready.`);
+  openOnboardingUnlockedModal(sci);
+}
+
+function openOnboardingUnlockedModal(sci) {
+  const modal = document.getElementById('appModal');
+  const content = document.getElementById('appModalContent');
+  if (!modal || !content) return;
+  const p = state.profile;
+  const cuisineNames = (p.selectedCuisines || [])
+    .map(id => (window.CUISINE_CATALOG || []).find(c => c.id === id)?.name || id)
+    .join(', ');
+
+  content.innerHTML = `
+    <div class="text-center space-y-2 pb-2 border-b border-slate-100 dark:border-slate-800">
+      <div class="w-12 h-12 rounded-2xl bg-emerald-500/20 text-emerald-500 flex items-center justify-center text-2xl mx-auto">🎉</div>
+      <h3 class="text-base sm:text-lg font-extrabold">Welcome, ${state.displayName}! Your Studio is Unlocked!</h3>
+      <p class="text-xs text-slate-400">
+        Your onboarding is complete. You can now generate endless <strong>Weekly Meal Plans</strong> and use the <strong>Craving & Movie Treat Generator</strong> anytime!
+      </p>
+    </div>
+
+    <div class="space-y-3 text-xs">
+      <div class="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-900 border border-emerald-500/30 space-y-1.5">
+        <div class="font-bold text-emerald-600 dark:text-emerald-400">✓ Your Custom Profile Summary:</div>
+        <div>• <strong>Daily Target:</strong> ${sci.calories.toLocaleString()} kcal (${sci.protein}g Protein · ${sci.carbs}g Carbs · ${sci.fat}g Fat · ${sci.fiber}g Fiber)</div>
+        <div>• <strong>Meal Structure:</strong> ${p.mealsPerDay} Main Meals + ${p.snacksPerDay} Daily Snacks</div>
+        <div>• <strong>Cuisines:</strong> ${cuisineNames}</div>
+      </div>
+
+      <div class="p-3 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-[11px] text-slate-600 dark:text-slate-300">
+        💡 <strong>Tip:</strong> You can return to the <strong>👤 Profile</strong> tab anytime to add optional body stats (like Body Fat %, Muscle Mass, or Waist) or adjust your cuisines—and your calories, macros, and meals will automatically update!
+      </div>
+
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+        <button onclick="closeModal(); switchTab('plan');" class="py-3 px-3 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-xs shadow-md transition">
+          📅 View My 7-Day Meal Plan
+        </button>
+        <button onclick="closeModal(); switchTab('generator');" class="py-3 px-3 rounded-2xl bg-slate-900 dark:bg-slate-800 text-white font-extrabold text-xs transition">
+          ✨ Open Craving Generator
+        </button>
+      </div>
+    </div>
+  `;
+  modal.classList.remove('hidden');
 }
 
 function openUserAccountModal() {
@@ -3366,7 +4331,7 @@ function signOutCurrentUser() {
   closeModal();
   currentSession = null;
   localStorage.removeItem(ACTIVE_USER_SESSION_KEY);
-  openAuthOverlay('signin');
+  startFamilyOnboarding();
 }
 
 function exportBackupJson() {

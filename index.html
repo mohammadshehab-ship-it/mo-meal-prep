@@ -129,6 +129,22 @@
   <!-- Main Centered Mobile-First Container (576px Max Width for Calm, Uncluttered Focus) -->
   <main class="max-w-xl mx-auto px-4 pt-4 space-y-5">
 
+    <!-- Incomplete Onboarding Guard Banner (Hidden when onboardingCompleted === true) -->
+    <div id="onboardingIncompleteBanner" class="hidden p-4 rounded-3xl bg-amber-500/15 border border-amber-500/40 space-y-2.5">
+      <div class="flex items-start justify-between gap-2">
+        <div>
+          <span class="text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded-full bg-amber-500 text-slate-950">Action Required</span>
+          <h3 class="text-sm font-extrabold mt-1">Finish Your Profile Onboarding to Unlock Meal & Craving Generation</h3>
+          <p class="text-xs text-slate-500 dark:text-slate-300 mt-0.5">
+            Complete your meal structure, favorite cuisines, dietary rules, and body stats so we can calculate your exact calories & macros.
+          </p>
+        </div>
+      </div>
+      <button onclick="resumePendingOnboarding()" class="w-full py-2.5 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-extrabold shadow-md transition">
+        ✨ Resume & Complete My Onboarding Now ▶
+      </button>
+    </div>
+
     <!-- ================= TAB 1: TODAY / WEEKLY PLAN ================= -->
     <section id="tab-plan" class="space-y-5">
 
@@ -179,7 +195,7 @@
         <div>
           <h2 class="text-base font-bold">On-Demand Meal & Snack Chef</h2>
           <p class="text-xs text-slate-400 mt-0.5">
-            Scaled to your <span id="genMacroSummaryText" class="text-emerald-600 dark:text-emerald-400 font-semibold">1,800 kcal</span> goal. Always Halal-friendly, No Pork, Shrimp/Tilapia only.
+            Scaled to your <span id="genMacroSummaryText" class="text-emerald-600 dark:text-emerald-400 font-semibold">1,800 kcal</span> goal • <span id="genDietSummaryText">Tailored to your cuisines & dietary rules. Every click crafts a brand-new dish!</span>
           </p>
         </div>
 
@@ -187,33 +203,54 @@
           <div>
             <label class="block text-[11px] font-semibold text-slate-400 mb-1">Meal Type</label>
             <select id="genSlot" class="w-full soft-input rounded-xl px-3 py-2.5 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500">
-              <option value="Meal 1 (First Meal - Lighter)">Meal 1: First Meal / Lunch (~27%)</option>
-              <option value="Meal 2 (Dinner - Hearty Main)">Meal 2: Hearty Dinner (~48%)</option>
-              <option value="Snack 1">Healthy Daily Snack (~12.5%)</option>
+              <option value="Meal 1 (First Meal - Lighter)">Meal 1: First Meal / Breakfast / Lunch</option>
+              <option value="Meal 2 (Dinner - Hearty Main)">Meal 2: Hearty Main / Dinner</option>
+              <option value="Snack 1">Healthy Daily Snack</option>
             </select>
           </div>
 
           <div>
             <label class="block text-[11px] font-semibold text-slate-400 mb-1">Primary Protein</label>
             <select id="genProtein" class="w-full soft-input rounded-xl px-3 py-2.5 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500">
-              <option value="Any Approved">Surprise Me (Any Approved)</option>
-              <option value="Chicken">Halal Chicken</option>
-              <option value="Beef">Halal Beef (Steak / Kafta)</option>
-              <option value="Shrimp">Shrimp</option>
-              <option value="Tilapia">Tilapia</option>
-              <option value="Eggs & Dairy">Eggs / Labneh / Yogurt</option>
-              <option value="Turkey">Halal Turkey</option>
+              <option value="Any Approved">🎲 Surprise Me (Matches My Diet)</option>
+              <option value="Chicken">🍗 Chicken Breast / Thighs</option>
+              <option value="Beef">🥩 Lean Beef (Steak / Kafta / Sirloin)</option>
+              <option value="Shrimp">🍤 Shrimp / Prawns</option>
+              <option value="Tilapia">🐟 White Fish / Tilapia / Cod</option>
+              <option value="Salmon">🍣 Salmon</option>
+              <option value="Turkey">🦃 Lean Turkey</option>
+              <option value="Eggs & Dairy">🍳 Eggs / Greek Yogurt / Labneh / Halloumi</option>
+              <option value="Plant Protein">🌱 Plant Protein (Tofu / Tempeh / Chickpeas / Lentils)</option>
             </select>
           </div>
 
           <div>
-            <label class="block text-[11px] font-semibold text-slate-400 mb-1">Cuisine Vibe</label>
+            <label class="block text-[11px] font-semibold text-slate-400 mb-1">World Cuisine Vibe</label>
             <select id="genCuisine" class="w-full soft-input rounded-xl px-3 py-2.5 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500">
-              <option value="Arabic / Mediterranean">Arabic / Mediterranean</option>
-              <option value="Mexican / Southwest">Mexican / Southwest</option>
-              <option value="Asian / Stir-Fry">Asian / Stir-Fry</option>
-              <option value="American / Steakhouse">Grillhouse / Cajun</option>
-              <option value="Sweet High-Protein">Sweet High-Protein</option>
+              <option value="My Favorites">⭐ Rotate My Favorite Cuisines</option>
+              <option value="Lebanese / Levantine">🇱🇧 Lebanese / Levantine</option>
+              <option value="Egyptian">🇪🇬 Egyptian</option>
+              <option value="Mediterranean (Classic)">🫒 Mediterranean (Classic)</option>
+              <option value="Palestinian & Jordanian">🇯🇴 Palestinian & Jordanian</option>
+              <option value="Turkish & Anatolian">🇹🇷 Turkish & Anatolian</option>
+              <option value="Greek Islands">🇬🇷 Greek Islands</option>
+              <option value="Moroccan & North African">🇲🇦 Moroccan & North African</option>
+              <option value="Persian / Iranian">🌿 Persian / Iranian</option>
+              <option value="Arabian Gulf / Khaleeji">🌴 Arabian Gulf / Khaleeji</option>
+              <option value="Indian (North & South)">🇮🇳 Indian (Tandoori / Tikka / Masala)</option>
+              <option value="Pakistani / Desi Grill">🇵🇰 Pakistani / Desi Grill</option>
+              <option value="Japanese">🇯🇵 Japanese (Teriyaki / Miso / Poke)</option>
+              <option value="Korean">🇰🇷 Korean (Bulgogi / Gochujang)</option>
+              <option value="Thai & Southeast Asian">🇹🇭 Thai & Southeast Asian</option>
+              <option value="Chinese Wok & Stir-Fry">🥢 Chinese Wok & Stir-Fry</option>
+              <option value="Italian Trattoria">🇮🇹 Italian Trattoria</option>
+              <option value="Spanish Tapas & Paella">🇪🇸 Spanish Tapas & Paella</option>
+              <option value="Mexican & Baja Southwest">🇲🇽 Mexican & Baja Southwest</option>
+              <option value="Latin & Peruvian">🇵🇪 Latin & Peruvian (Chimichurri)</option>
+              <option value="American Grillhouse & BBQ">🔥 American Grillhouse & BBQ</option>
+              <option value="Cajun & Southern">🎺 Cajun & Southern</option>
+              <option value="Ethiopian / East African">🇪🇹 Ethiopian / Berbere Spice</option>
+              <option value="Sweet High-Protein">🍓 Sweet High-Protein</option>
             </select>
           </div>
 
@@ -222,19 +259,20 @@
             <select id="genAppliance" class="w-full soft-input rounded-xl px-3 py-2.5 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500">
               <option value="Air Fryer (Under 15 mins)">Air Fryer (Under 15 mins)</option>
               <option value="Stovetop Skillet (Under 15 mins)">Stovetop Skillet (Under 15 mins)</option>
-              <option value="Instant Pot / Pressure Cooker">Instant Pot</option>
-              <option value="Grill (Indoor/Outdoor)">Grill</option>
+              <option value="Oven / Sheet Pan">Oven / Sheet Pan</option>
+              <option value="Instant Pot / Pressure Cooker">Instant Pot / Pressure Cooker</option>
+              <option value="Grill (Indoor/Outdoor)">Grill (Indoor/Outdoor)</option>
               <option value="No-Cook (Under 5 mins)">No-Cook (Under 5 mins)</option>
             </select>
           </div>
         </div>
 
         <div>
-          <input id="genCustomNote" type="text" placeholder="Optional note (e.g., extra spicy, crispy potatoes, pita)..." class="w-full soft-input rounded-xl px-3.5 py-2.5 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+          <input id="genCustomNote" type="text" placeholder="Optional note (e.g., extra spicy, crispy potatoes, pita, garlic sauce)..." class="w-full soft-input rounded-xl px-3.5 py-2.5 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500" />
         </div>
 
         <button onclick="generateSingleMeal()" id="btnGenerateSingle" class="w-full bg-slate-900 dark:bg-emerald-500 hover:opacity-95 text-white dark:text-slate-950 font-bold text-xs py-3.5 rounded-2xl shadow-md transition">
-          🔥 Generate Recipe
+          🔥 Generate Fresh Recipe (Click Again for Another Idea!)
         </button>
       </div>
 
@@ -414,27 +452,31 @@
         <!-- Collapsible Edit Body Stats & Goal Drawer -->
         <details class="group pt-2 border-t border-slate-100 dark:border-slate-800/80">
           <summary class="cursor-pointer py-2 text-xs font-bold text-slate-600 dark:text-slate-300 flex items-center justify-between select-none">
-            <span>✏️ Update Current Weight, Body Fat %, Goal or Activity</span>
+            <span>✏️ Update Body Stats & Goal (Mandatory vs. Optional)</span>
             <span class="text-slate-400 group-open:rotate-180 transition-transform">▼</span>
           </summary>
 
           <div class="pt-3 space-y-4">
+            <div class="p-3 rounded-2xl bg-emerald-50/70 dark:bg-emerald-500/10 border border-emerald-500/20 text-[11px] text-slate-600 dark:text-slate-300 leading-relaxed">
+              💡 <strong>Update Anytime:</strong> You can come back here whenever you want to add or update <strong>Optional</strong> metrics (like Body Fat %, Muscle Mass, or Waist) or adjust your Weight/Goal. Saving & recalculating will automatically update your daily caloric intake, macros, and meal portions!
+            </div>
+
             <div class="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
               <div>
-                <label class="block text-[10px] font-semibold text-slate-400 mb-1">Current Weight (lbs)</label>
+                <label class="block text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 mb-1">Current Weight (lbs) *</label>
                 <input id="profCurrentWeight" type="number" step="0.1" value="170" oninput="recalcBodyCompProjections('current')" class="w-full soft-input rounded-xl px-3 py-2 text-xs font-bold" />
               </div>
               <div>
-                <label class="block text-[10px] font-semibold text-slate-400 mb-1">Current Body Fat %</label>
-                <input id="profBodyFat" type="number" step="0.1" value="23" oninput="recalcBodyCompProjections('current')" class="w-full soft-input rounded-xl px-3 py-2 text-xs font-bold" />
+                <label class="block text-[10px] font-semibold text-amber-600 dark:text-amber-400 mb-1">Body Fat % (Optional)</label>
+                <input id="profBodyFat" type="number" step="0.1" value="23" placeholder="Auto-estimated" oninput="recalcBodyCompProjections('current')" class="w-full soft-input rounded-xl px-3 py-2 text-xs font-bold" />
               </div>
               <div>
-                <label class="block text-[10px] font-semibold text-slate-400 mb-1">Muscle Mass (lbs)</label>
-                <input id="profMuscleMass" type="number" step="0.1" value="75" oninput="recalcBodyCompProjections('current')" class="w-full soft-input rounded-xl px-3 py-2 text-xs font-bold" />
+                <label class="block text-[10px] font-semibold text-purple-500 mb-1">Muscle lbs (Optional)</label>
+                <input id="profMuscleMass" type="number" step="0.1" value="75" placeholder="Auto-estimated" oninput="recalcBodyCompProjections('current')" class="w-full soft-input rounded-xl px-3 py-2 text-xs font-bold" />
               </div>
               <div>
                 <div class="flex items-center justify-between mb-1">
-                  <label class="text-[10px] font-semibold text-slate-400">Waist (in, Opt)</label>
+                  <label class="text-[10px] font-semibold text-slate-400">Waist in (Optional)</label>
                   <button onclick="toggleWaistHelper()" type="button" class="text-[10px] font-bold text-sky-500 underline">? Help</button>
                 </div>
                 <input id="profWaist" type="number" step="0.1" placeholder="Optional" class="w-full soft-input rounded-xl px-3 py-2 text-xs" />
@@ -569,6 +611,11 @@
         <button onclick="saveManualMacroTargetsAndPromptRescale()" class="w-full py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-xs font-bold transition">
           Apply Edited Macros to Meal Plan
         </button>
+      </div>
+
+      <!-- Card 2.5: Meal Structure, World Cuisines (Up to 5) & Dietary Restrictions -->
+      <div class="soft-card rounded-3xl p-5 space-y-3" id="profilePreferencesCard">
+        <!-- Populated dynamically by JS -->
       </div>
 
       <!-- Card 3: Food Preferences, Firebase Status & Gemini Key -->
